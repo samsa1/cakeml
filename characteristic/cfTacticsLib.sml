@@ -38,6 +38,28 @@ fun hide_environments b =
 
 val _ = hide_environments true
 
+(* -------------------------------------------------------------------------
+ * Restrictive compset for use with CF conversions in this file
+ * ------------------------------------------------------------------------- *)
+
+local
+  val reduce_ss = reduceLib.num_compset ();
+  val _ = computeLib.extend_compset [
+    computeLib.Extenders [
+      listLib.list_rws,
+      basicComputeLib.add_basic_compset,
+      semanticsComputeLib.add_semantics_compset,
+      ml_progComputeLib.add_env_compset,
+      cfComputeLib.add_cf_aux_compset
+    ],
+    computeLib.Defs [
+      semanticPrimitivesTheory.find_recfun_def,
+      cfTheory.cf_def
+    ]] reduce_ss;
+in
+  val cf_eval = computeLib.CBV_CONV reduce_ss;
+end
+
 (*------------------------------------------------------------------*)
 
 val cs = computeLib.the_compset
