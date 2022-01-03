@@ -55,55 +55,18 @@ local
     computeLib.Defs [
       semanticPrimitivesTheory.find_recfun_def,
       cfTheory.cf_def
-    ]] reduce_ss;
+    ],
+    computeLib.Convs [
+      (“nsLookup”, 2, ml_progLib.nsLookup_conv),
+      (“nsLookup_Short”, 2, ml_progLib.nsLookup_conv),
+      (“nsLookup_Mod1”, 2, ml_progLib.nsLookup_conv)]
+    ] reduce_ss;
 in
   val cf_eval = computeLib.CBV_CONV reduce_ss;
+  val cf_eval_pat = compute_pat reduce_ss
 end
-
-(*------------------------------------------------------------------*)
-
-val cs = computeLib.the_compset
-val () = listLib.list_rws cs
-val () = basicComputeLib.add_basic_compset cs
-val () = semanticsComputeLib.add_semantics_compset cs
-val () = ml_progComputeLib.add_env_compset cs
-val () = cfComputeLib.add_cf_aux_compset cs
-val () = computeLib.extend_compset [
-  computeLib.Defs [
-(*  TS: it's quite unclear to me why CF does this, when ml_progScript is so
-    careful to ensure that these definitions aren't in the compset. I've tried
-    adjusting it, but it results in far too much work. *)
-    ml_progTheory.merge_env_def,
-    ml_progTheory.write_def,
-    ml_progTheory.write_mod_def,
-    ml_progTheory.write_cons_def,
-    ml_progTheory.empty_env_def
-    (*semanticPrimitivesTheory.merge_alist_mod_env_def*)
-  ]] cs
 
 val _ = (max_print_depth := 15)
-
-val eval = computeLib.CBV_CONV cs THENC EVAL (* TODO: remove EVAL *)
-val eval_tac = CONV_TAC eval
-fun eval_pat t = (compute_pat cs t) THENC EVAL (* TODO: same *)
-fun eval_pat_tac pat = CONV_TAC (DEPTH_CONV (eval_pat pat))
-
-local
-  (* from bossLib.sml *)
-  open simpLib
-
-  fun stateful f ssfl thm =
-    let
-      val       ss = List.foldl (simpLib.++ o Lib.swap) (srw_ss()) ssfl
-    in
-      f ss thm
-    end
-
-  val let_arith_list = [boolSimps.LET_ss, numSimps.ARITH_ss]
-in
-  val simp_conv = stateful SIMP_CONV let_arith_list
-  val simp_rule = stateful SIMP_RULE let_arith_list
-end
 
 (*------------------------------------------------------------------*)
 
@@ -131,15 +94,6 @@ val reducible_pats = [
   ``nsLookup_Mod1 _ _``,
   ``Fun_body _``
 ]
-
-val reduce_conv =
-    DEPTH_CONV (
-      List.foldl (fn (pat, conv) => (eval_pat pat) ORELSEC conv)
-                 ALL_CONV reducible_pats
-    ) THENC
-    (simp_conv [])
-
-val reduce_tac = CONV_TAC reduce_conv
 
 fun err_tac orig msg : tactic =
   fn _ => raise ERR orig msg
@@ -278,8 +232,8 @@ fun xcf_with_def name f_def =
     val Closure_tac =
       CONV_TAC (DEPTH_CONV naryClosure_repack_conv) \\
       irule app_of_cf THEN
-      CONJ_TAC THEN1 eval_tac THEN
-      CONJ_TAC THEN1 eval_tac THEN simp [cf_def]
+      CONJ_TAC THEN1 (CONV_TAC cf_eval) THEN
+      CONJ_TAC THEN1 (CONV_TAC cf_eval) THEN simp [cf_def]
     val Recclosure_tac =
       PURE_ONCE_REWRITE_TAC [GSYM letrec_pull_params_repack] THEN
       ConseqConv.CONSEQ_CONV_TAC prove_app_rec_of_cf THEN
@@ -298,7 +252,8 @@ in
   rpt strip_tac THEN
   rewrite_tac [f_def] THEN
   closure_tac THEN
-  CONV_TAC cf_eval
+  CONV_TAC cf_eval THEN
+  rewrite_tac [GSYM f_def]
 end;
 
 fun xcf name st =
@@ -378,11 +333,13 @@ end
 
 (* [xfun] *)
 
-val reduce_spec_conv =
-  STRIP_QUANT_CONV (LAND_CONV eval) THENC
-  simp_conv [LENGTH_EQ_NUM_compute, PULL_EXISTS]
+(* FIXME srw_ss () *)
 
-val reduce_curried_conv = RATOR_CONV (RAND_CONV eval)
+val reduce_spec_conv =
+  STRIP_QUANT_CONV (LAND_CONV cf_eval) THENC
+  SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS]
+
+val reduce_curried_conv = RATOR_CONV (RAND_CONV cf_eval)
 
 val fun_reduce_conv =
   QUANT_CONV (
@@ -407,22 +364,24 @@ fun fun_rec_aux_unfold_conv tm = let
     )
 in (base_conv ORELSEC ind_conv) tm end
 
+(* FIXME srw_ss () *)
+
 val fun_rec_reduce_conv = let
   val reduce_length =
-      eval THENC
-      simp_conv [LENGTH_EQ_NUM_compute, PULL_EXISTS]
+      cf_eval THENC
+      SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS]
 in
-  simp_conv [] THENC
+  SIMP_CONV (srw_ss()) [] THENC
   QUANT_CONV (
     LAND_CONV reduce_length THENC
     RAND_CONV (
-      LAND_CONV eval THENC
+      LAND_CONV cf_eval THENC
       RAND_CONV (
-        DEPTH_CONV (eval_pat ``letrec_pull_params _``)
+        DEPTH_CONV (cf_eval_pat ``letrec_pull_params _``)
       )
     )
   ) THENC
-  simp_conv [PULL_EXISTS] THENC
+  SIMP_CONV (srw_ss()) [PULL_EXISTS] THENC
   QUANT_CONV fun_rec_aux_unfold_conv
 end
 
@@ -444,7 +403,7 @@ fun xfun_core (g as (_, w)) =
   else
     err_tac "xfun" "goal is not a cf_fun or cf_fun_rec" g
 
-val simp_spec = CONV_RULE (REPEATC (reduce_conv THENC PURE_ONCE_REWRITE_CONV[cf_def]))
+val simp_spec = CONV_RULE (REPEATC (cf_eval THENC PURE_ONCE_REWRITE_CONV[cf_def]))
 
 fun xfun qname =
   xpull_check_not_needed \\
@@ -507,6 +466,7 @@ fun goal_app_infos tm : hol_type * term =
   let val (p, f_tm, _, _, _) = cfAppSyntax.dest_app tm
       val ffi_ty = cfHeapsBaseSyntax.dest_ffi_proj (type_of p)
   in (ffi_ty, f_tm) end
+  handle HOL_ERR {message,...} => raise (ERR "goal_app_infos" "not an app")
 
 fun is_cf_spec_for f tm =
   (concl_tm tm |> goal_app_infos |> snd) ~~ f
@@ -525,6 +485,11 @@ fun spec_kind_for f tm : spec_kind option =
 
 fun is_spec_for f tm : bool =
   spec_kind_for f tm <> NONE
+
+(*
+  val asl = #1 (top_goal ())
+  val tm = hd asl
+ *)
 
 fun xspec_in_asl f asl : (spec_kind * term) option =
   find_map (fn tm =>
@@ -563,37 +528,40 @@ fun xspec ffi_ty f (ttac: thm_tactic) (g as (asl, w)) =
            ttac (cf_spec ffi_ty k thm) g)
         | NONE =>
           raise ERR "xspec" ("Could not find a specification for " ^
-                             fst (dest_const f))
+                             term_to_string f)
 
 (* [xapp] *)
 
 val unfolded_app_reduce_conv =
-let
-  fun fail_if_F_conv msg tm =
-    if Feq tm then raise ERR "xapp" msg
-    else REFL tm
+  let
+    fun fail_if_F_conv msg tm =
+      if Feq tm then raise ERR "xapp" msg
+      else REFL tm
 
-  val fname_lookup_reduce_conv =
-    reduce_conv THENC
-    (fail_if_F_conv "Unbound function")
+    val fname_lookup_reduce_conv =
+      cf_eval THENC
+      (fail_if_F_conv "Unbound function")
 
-  val args_lookup_reduce_conv =
-    reduce_conv THENC
-    (fail_if_F_conv "Unbound argument(s)")
-in
-  STRIP_QUANT_CONV (
-    FORK_CONV (
-      fname_lookup_reduce_conv,
-      (LAND_CONV args_lookup_reduce_conv)
-    )
-  )
-end
+    val args_lookup_reduce_conv =
+      cf_eval THENC
+      (fail_if_F_conv "Unbound argument(s)")
+  in
+    STRIP_QUANT_CONV (
+      FORK_CONV (
+        fname_lookup_reduce_conv,
+        (LAND_CONV args_lookup_reduce_conv)))
+  end
+
+(* TODO make this into a conversion (or tactic) that instantiates
+ * more carefully *)
 
 val unfold_cf_app =
   head_unfold cf_app_def \\
   irule local_elim \\ hnf \\
   CONV_TAC unfolded_app_reduce_conv \\
-  reduce_tac
+  irule_at (Pos hd) EQ_REFL \\
+  irule_at (Pos hd) EQ_REFL \\
+  CONV_TAC cf_eval
 
 val xapp_prepare_goal =
   xpull_check_not_needed \\
@@ -642,10 +610,10 @@ val xlit_core =
   head_unfold cf_lit_def \\ cbv
 
 val xcon_core =
-  head_unfold cf_con_def \\ reduce_tac
+  head_unfold cf_con_def \\ CONV_TAC cf_eval
 
 val xvar_core =
-  head_unfold cf_var_def \\ reduce_tac
+  head_unfold cf_var_def \\ CONV_TAC cf_eval
 
 fun xret_pre cont1 cont2 (g as (_, w)) =
   (xpull_check_not_needed \\
@@ -671,7 +639,7 @@ val xlog_base =
   xpull_check_not_needed \\
   head_unfold cf_log_def \\
   irule local_elim \\ hnf \\
-  reduce_tac \\
+  CONV_TAC cf_eval \\
   cleanup_exn_side_cond \\
   TRY (asm_exists_tac \\ simp [])
 
@@ -683,32 +651,34 @@ val xif_base =
   xpull_check_not_needed \\
   head_unfold cf_if_def \\
   irule local_elim \\ hnf \\
-  reduce_tac \\
+  CONV_TAC cf_eval \\
   TRY (asm_exists_tac \\ simp [] \\ conj_tac \\ DISCH_TAC)
 
 val xif = xif_base
 
 (* [xcases] *)
 
+(* FIXME srw_ss () *)
+
 fun clean_cases_conv tm = let
   val cond_conv =
       HO_REWR_CONV exists_v_of_pat_norest_length THENC
-      STRIP_QUANT_CONV (LAND_CONV (RHS_CONV eval)) THENC
-      STRIP_QUANT_CONV (RAND_CONV (LAND_CONV (RHS_CONV eval))) THENC
-      simp_conv [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
+      STRIP_QUANT_CONV (LAND_CONV (RHS_CONV cf_eval)) THENC
+      STRIP_QUANT_CONV (RAND_CONV (LAND_CONV (RHS_CONV cf_eval))) THENC
+      SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
       STRIP_QUANT_CONV
-        (LHS_CONV eval THENC simp_conv [option_CLAUSES])
+        (LHS_CONV cf_eval THENC SIMP_CONV (srw_ss()) [option_CLAUSES])
   val then_conv =
       HO_REWR_CONV forall_v_of_pat_norest_length THENC
-      STRIP_QUANT_CONV (LAND_CONV (RHS_CONV eval)) THENC
-      STRIP_QUANT_CONV (RAND_CONV (LAND_CONV (RHS_CONV eval))) THENC
-      simp_conv [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
+      STRIP_QUANT_CONV (LAND_CONV (RHS_CONV cf_eval)) THENC
+      STRIP_QUANT_CONV (RAND_CONV (LAND_CONV (RHS_CONV cf_eval))) THENC
+      SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
       STRIP_QUANT_CONV
-        (LAND_CONV (LHS_CONV eval) THENC
-         simp_conv [option_CLAUSES])
+        (LAND_CONV (LHS_CONV cf_eval) THENC
+         SIMP_CONV (srw_ss()) [option_CLAUSES])
   val else_conv =
       TRY_CONV (LAND_CONV clean_cases_conv ORELSEC
-                simp_conv [cf_bottom_def])
+                SIMP_CONV (srw_ss()) [cf_bottom_def])
 in
   (RATOR_CONV (RATOR_CONV (RAND_CONV cond_conv)) THENC
    RATOR_CONV (RAND_CONV then_conv) THENC
@@ -721,13 +691,15 @@ val unfold_cases =
   CONV_TAC (LAND_CONV clean_cases_conv) \\
   simp []
 
+(* FIXME srw_ss () *)
+
 fun validate_pat_conv tm = let
   val conv =
       REWR_CONV validate_pat_def THENC
-      RAND_CONV eval THENC
+      RAND_CONV cf_eval THENC
       LAND_CONV (REWR_CONV pat_typechecks_def) THENC
-      eval
-  val conv' = (QUANT_CONV conv) THENC simp_conv []
+      cf_eval
+  val conv' = (QUANT_CONV conv) THENC SIMP_CONV (srw_ss()) []
   val th = conv' tm
 in if Teq (rhs (concl th)) then th else fail () end
 
@@ -736,6 +708,8 @@ val validate_pat_all_conv =
     RAND_CONV validate_pat_conv THENC RW.RW_CONV [boolTheory.AND_CLAUSES]
   )
 
+(* FIXME srw_ss () *)
+
 local
   val can_pmatch_all_tm =
     semanticPrimitivesTheory.can_pmatch_all_def
@@ -743,7 +717,7 @@ local
   val c1 = SIMP_CONV (srw_ss()) [evaluatePropsTheory.can_pmatch_all_EVERY,
                                  evaluatePropsTheory.pmatch_not_type_error_EQ,
                                  semanticPrimitivesTheory.same_type_def]
-  val c2 = eval THENC SIMP_CONV (srw_ss()) [] THENC eval
+  val c2 = cf_eval THENC SIMP_CONV (srw_ss()) [] THENC cf_eval
 in
   fun can_pmatch_all_conv tm =
     if not (can (match_term can_pmatch_all_tm) tm)
@@ -766,7 +740,7 @@ val xcases =
 val xmatch_base =
   xpull_check_not_needed \\
   head_unfold cf_match_def \\ irule local_elim \\
-  reduce_tac \\
+  CONV_TAC cf_eval \\
   xcases
 
 val xmatch = xmatch_base
@@ -777,14 +751,14 @@ val xffi =
   xpull_check_not_needed \\
   head_unfold cf_ffi_def \\
   irule local_elim \\ hnf \\
-  simp [app_ffi_def] \\ reduce_tac \\
+  simp [app_ffi_def] \\ CONV_TAC cf_eval \\
   conj_tac \\ cleanup_exn_side_cond
 
 (* [xraise] *)
 
 val xraise =
   xpull_check_not_needed \\
-  head_unfold cf_raise_def \\ reduce_tac \\
+  head_unfold cf_raise_def \\ CONV_TAC cf_eval \\
   HO_MATCH_MP_TAC xret_lemma \\
   cleanup_exn_side_cond
 
@@ -811,7 +785,7 @@ in
   xhandle_core
     (qexists_tac Q)
     (qx_gen_tac qname \\
-     reduce_tac \\
+     CONV_TAC cf_eval \\
      TRY xpull)
     g
 end
@@ -820,7 +794,7 @@ end
 val xopb =
   xpull_check_not_needed \\
   head_unfold cf_opb_def \\
-  reduce_tac \\
+  CONV_TAC cf_eval \\
   irule local_elim \\ hnf \\
   simp[app_opb_def, semanticPrimitivesTheory.opb_lookup_def] \\
   cleanup_exn_side_cond
@@ -829,12 +803,12 @@ val xopb =
 val xopn =
   xpull_check_not_needed \\
   head_unfold cf_opn_def \\
-  reduce_tac \\
+  CONV_TAC cf_eval \\
   irule local_elim \\ hnf \\
   simp[app_opn_def, semanticPrimitivesTheory.opn_lookup_def] \\
   cleanup_exn_side_cond
 
 val xref = xpull_check_not_needed \\ head_unfold cf_ref_def \\
-           irule local_elim \\ hnf \\ simp[app_ref_def] \\ reduce_tac
+           irule local_elim \\ hnf \\ simp[app_ref_def] \\ CONV_TAC cf_eval
 
 end
