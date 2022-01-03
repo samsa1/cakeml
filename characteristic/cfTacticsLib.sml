@@ -231,6 +231,48 @@ fun naryFun_repack_conv tm =
 val naryClosure_repack_conv =
   (RAND_CONV naryFun_repack_conv) THENC (REWR_CONV (GSYM naryClosure_def))
 
+(* -------------------------------------------------------------------------
+ * Consequence conversion that instantiates a theorem which proves 'app'
+ * from 'cf' (see the theorem app_rec_of_cf).
+ * ------------------------------------------------------------------------- *)
+
+local
+  val cfth = SPEC_ALL app_rec_of_cf;
+  val find_recfun_pat =
+    cfth |> concl |> strip_imp |> #1 |> el 4 |> rator |> rand
+  val app_pat = cfth |> concl |> strip_imp |> #2;
+  val params_tm =
+    mk_var ("params", listSyntax.mk_list_type stringSyntax.string_ty);
+  val body_tm = mk_var ("body", astSyntax.exp_ty);
+  fun prove_app app_tm =
+    let
+      val th = INST_TY_TERM (match_term app_pat app_tm) cfth
+      (* Get results of find_recfun application *)
+      val find_rf_tm = find_term (can (match_term find_recfun_pat)) (concl th)
+      val find_rf_th = cf_eval find_rf_tm
+      (* Instantiate theorem with params and body *)
+      val (params, body) =
+        concl find_rf_th |> rhs |> optionSyntax.dest_some |> pairSyntax.dest_pair
+      val th1 = INST [params_tm|->params,body_tm|->body] th
+      (* Prove list hyps *)
+      fun prove_imp th = MP th (EQT_ELIM (cf_eval (#1 (dest_imp (concl th)))))
+      val th2 = prove_imp th1
+      val th3 = prove_imp th2
+      val th3 = prove_imp th3
+    in
+      (* Remove find_recfun hyp *)
+      MP th3 find_rf_th
+    end;
+in
+  val prove_app_rec_of_cf = ConseqConv.STRENGTHEN_CONSEQ_CONV prove_app
+end
+
+(* -------------------------------------------------------------------------
+ * [xcf]
+ * ------------------------------------------------------------------------- *)
+
+(* TODO The [name] argument is unused. *)
+
 fun xcf_with_def name f_def =
   let
     val Closure_tac =
@@ -238,30 +280,26 @@ fun xcf_with_def name f_def =
       irule app_of_cf THEN
       CONJ_TAC THEN1 eval_tac THEN
       CONJ_TAC THEN1 eval_tac THEN simp [cf_def]
-
     val Recclosure_tac =
-      CONV_TAC (DEPTH_CONV (REWR_CONV (GSYM letrec_pull_params_repack))) \\
-      irule app_rec_of_cf THEN
-      CONJ_TAC THEN1 eval_tac THEN
-        rpt(CHANGED_TAC(simp[Once cf_def] \\ reduce_tac))\\
-        CONV_TAC (
-          DEPTH_CONV (
-            REWR_CONV letrec_pull_params_repack THENC
-            REWR_CONV (GSYM f_def)))
-    fun closure_tac (g as (_, w)) =
-      let val (_, c, _, _, _) = cfAppSyntax.dest_app w in
-          if is_Closure c then
-            Closure_tac g
-          else if is_Recclosure c then
-            Recclosure_tac g
-          else
-            err_tac "xcf" "argument of app is not a closure" g
-      end
-      handle HOL_ERR _ =>
-             err_tac "xcf" "goal is not an app" g
-  in
-    rpt strip_tac \\ simp [f_def] \\ closure_tac \\ reduce_tac
-  end;
+      PURE_ONCE_REWRITE_TAC [GSYM letrec_pull_params_repack] THEN
+      ConseqConv.CONSEQ_CONV_TAC prove_app_rec_of_cf THEN
+      PURE_ONCE_REWRITE_TAC [letrec_pull_params_repack]
+  fun closure_tac (g as (_, w)) =
+    let val (_, c, _, _, _) = cfAppSyntax.dest_app w in
+        if is_Closure c then
+          Closure_tac g
+        else if is_Recclosure c then
+          Recclosure_tac g
+        else
+          err_tac "xcf" "argument of app is not a closure" g
+    end
+    handle HOL_ERR _ => err_tac "xcf" "goal is not an app" g
+in
+  rpt strip_tac THEN
+  rewrite_tac [f_def] THEN
+  closure_tac THEN
+  CONV_TAC cf_eval
+end;
 
 fun xcf name st =
   let
