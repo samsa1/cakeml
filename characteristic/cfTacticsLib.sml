@@ -54,17 +54,28 @@ local
     ],
     computeLib.Defs [
       semanticPrimitivesTheory.find_recfun_def,
+      semanticPrimitivesTheory.do_con_check_def,
+      semanticPrimitivesTheory.build_conv_def,
+      semanticPrimitivesTheory.can_pmatch_all_def,
+      semanticPrimitivesTheory.same_type_def,
+      semanticPrimitivesTheory.same_ctor_def,
+      pat_wildcards_def,
       cfTheory.cf_def
     ],
     computeLib.Convs [
       (“nsLookup”, 2, ml_progLib.nsLookup_conv),
       (“nsLookup_Short”, 2, ml_progLib.nsLookup_conv),
-      (“nsLookup_Mod1”, 2, ml_progLib.nsLookup_conv)]
+      (“nsLookup_Mod1”, 2, ml_progLib.nsLookup_conv)],
+    computeLib.Tys [
+      “:'a semanticPrimitives$match_result”
+    ]
     ] reduce_ss;
 in
   val cf_eval = computeLib.CBV_CONV reduce_ss;
   val cf_eval_pat = compute_pat reduce_ss
 end
+
+val reduce_tac = CONV_TAC cf_eval;
 
 val _ = (max_print_depth := 15)
 
@@ -238,23 +249,23 @@ fun xcf_with_def name f_def =
       PURE_ONCE_REWRITE_TAC [GSYM letrec_pull_params_repack] THEN
       ConseqConv.CONSEQ_CONV_TAC prove_app_rec_of_cf THEN
       PURE_ONCE_REWRITE_TAC [letrec_pull_params_repack]
-  fun closure_tac (g as (_, w)) =
-    let val (_, c, _, _, _) = cfAppSyntax.dest_app w in
-        if is_Closure c then
-          Closure_tac g
-        else if is_Recclosure c then
-          Recclosure_tac g
-        else
-          err_tac "xcf" "argument of app is not a closure" g
-    end
-    handle HOL_ERR _ => err_tac "xcf" "goal is not an app" g
-in
-  rpt strip_tac THEN
-  rewrite_tac [f_def] THEN
-  closure_tac THEN
-  CONV_TAC cf_eval THEN
-  rewrite_tac [GSYM f_def]
-end;
+    fun closure_tac (g as (_, w)) =
+      let
+        val (_, c, _, _, _) = cfAppSyntax.dest_app w
+        val tac = if is_Closure c then Closure_tac
+                  else if is_Recclosure c then Recclosure_tac
+                  else err_tac "xcf" "argument of app is not a closure"
+      in
+        tac g
+      end
+      handle HOL_ERR _ => err_tac "xcf" "goal is not an app" g
+  in
+    rpt strip_tac THEN
+    rewrite_tac [f_def] THEN
+    closure_tac THEN
+    CONV_TAC (RATOR_CONV cf_eval) THEN
+    rewrite_tac [GSYM f_def]
+  end;
 
 fun xcf name st =
   let
@@ -369,19 +380,9 @@ in (base_conv ORELSEC ind_conv) tm end
 val fun_rec_reduce_conv = let
   val reduce_length =
       cf_eval THENC
-      SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS]
+      SIMP_CONV list_ss [LENGTH_EQ_NUM_compute, PULL_EXISTS]
 in
-  SIMP_CONV (srw_ss()) [] THENC
-  QUANT_CONV (
-    LAND_CONV reduce_length THENC
-    RAND_CONV (
-      LAND_CONV cf_eval THENC
-      RAND_CONV (
-        DEPTH_CONV (cf_eval_pat ``letrec_pull_params _``)
-      )
-    )
-  ) THENC
-  SIMP_CONV (srw_ss()) [PULL_EXISTS] THENC
+  SIMP_CONV (list_ss ++ LET_ss) [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
   QUANT_CONV fun_rec_aux_unfold_conv
 end
 
@@ -403,7 +404,7 @@ fun xfun_core (g as (_, w)) =
   else
     err_tac "xfun" "goal is not a cf_fun or cf_fun_rec" g
 
-val simp_spec = CONV_RULE (REPEATC (cf_eval THENC PURE_ONCE_REWRITE_CONV[cf_def]))
+val simp_spec = CONV_RULE (REPEATC (CHANGED_CONV (cf_eval THENC PURE_ONCE_REWRITE_CONV[cf_def])))
 
 fun xfun qname =
   xpull_check_not_needed \\
@@ -532,6 +533,8 @@ fun xspec ffi_ty f (ttac: thm_tactic) (g as (asl, w)) =
 
 (* [xapp] *)
 
+(* FIXME xapp is still quite slow, but I don't know where it spends time *)
+
 val unfolded_app_reduce_conv =
   let
     fun fail_if_F_conv msg tm =
@@ -560,8 +563,7 @@ val unfold_cf_app =
   irule local_elim \\ hnf \\
   CONV_TAC unfolded_app_reduce_conv \\
   irule_at (Pos hd) EQ_REFL \\
-  irule_at (Pos hd) EQ_REFL \\
-  CONV_TAC cf_eval
+  irule_at (Pos hd) EQ_REFL
 
 val xapp_prepare_goal =
   xpull_check_not_needed \\
@@ -621,6 +623,7 @@ fun xret_pre cont1 cont2 (g as (_, w)) =
     else if is_cf_con w then xcon_core
     else if is_cf_var w then xvar_core
     else fail ()) \\
+   SIMP_TAC bool_ss [cfHeapsBaseTheory.POSTv_Val] \\
    cont1 \\
    cleanup_exn_side_cond
    ) g
@@ -650,46 +653,51 @@ val xlog = xlog_base
 val xif_base =
   xpull_check_not_needed \\
   head_unfold cf_if_def \\
-  irule local_elim \\ hnf \\
-  CONV_TAC cf_eval \\
-  TRY (asm_exists_tac \\ simp [] \\ conj_tac \\ DISCH_TAC)
+  irule local_elim \\ hnf \\ (* Surely there has to be a BOOL for the condition lying around *)
+  qpat_assum ‘BOOL _ _’ (irule_at (Pos (el 2))) THEN
+  simp_tac bool_ss [] THEN
+  CONJ_TAC THEN1 (CONV_TAC cf_eval) THEN
+  TRY (first_assum (irule_at Any) THEN simp_tac bool_ss [] THEN NO_TAC)
 
 val xif = xif_base
 
 (* [xcases] *)
 
-(* FIXME srw_ss () *)
+(* FIXME Simpset with same_type, same_const and v_11, etc *)
 
-fun clean_cases_conv tm = let
-  val cond_conv =
-      HO_REWR_CONV exists_v_of_pat_norest_length THENC
-      STRIP_QUANT_CONV (LAND_CONV (RHS_CONV cf_eval)) THENC
-      STRIP_QUANT_CONV (RAND_CONV (LAND_CONV (RHS_CONV cf_eval))) THENC
-      SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
-      STRIP_QUANT_CONV
-        (LHS_CONV cf_eval THENC SIMP_CONV (srw_ss()) [option_CLAUSES])
-  val then_conv =
-      HO_REWR_CONV forall_v_of_pat_norest_length THENC
-      STRIP_QUANT_CONV (LAND_CONV (RHS_CONV cf_eval)) THENC
-      STRIP_QUANT_CONV (RAND_CONV (LAND_CONV (RHS_CONV cf_eval))) THENC
-      SIMP_CONV (srw_ss()) [LENGTH_EQ_NUM_compute, PULL_EXISTS] THENC
-      STRIP_QUANT_CONV
-        (LAND_CONV (LHS_CONV cf_eval) THENC
-         SIMP_CONV (srw_ss()) [option_CLAUSES])
-  val else_conv =
-      TRY_CONV (LAND_CONV clean_cases_conv ORELSEC
-                SIMP_CONV (srw_ss()) [cf_bottom_def])
-in
-  (RATOR_CONV (RATOR_CONV (RAND_CONV cond_conv)) THENC
-   RATOR_CONV (RAND_CONV then_conv) THENC
-   RAND_CONV else_conv) tm
-end
+fun clean_cases_conv tm =
+  let
+    val cond_conv =
+        HO_REWR_CONV exists_v_of_pat_norest_length THENC
+        cf_eval THENC
+        SIMP_CONV list_ss [LENGTH_EQ_NUM_compute,
+                           semanticPrimitivesTheory.v_11,
+                           semanticPrimitivesTheory.stamp_11,
+                           pair_CASE_def,
+                           PULL_EXISTS]
+    val then_conv =
+        HO_REWR_CONV forall_v_of_pat_norest_length THENC
+        cf_eval THENC
+        SIMP_CONV list_ss [LENGTH_EQ_NUM_compute,
+                           semanticPrimitivesTheory.v_11,
+                           semanticPrimitivesTheory.stamp_11,
+                           pair_CASE_def,
+                           PULL_EXISTS]
+    val else_conv =
+        TRY_CONV (LAND_CONV clean_cases_conv ORELSEC
+                  (SIMP_CONV list_ss [cf_bottom_def] THENC
+                   cf_eval))
+  in
+    (RATOR_CONV (RATOR_CONV (RAND_CONV cond_conv)) THENC
+     RATOR_CONV (RAND_CONV then_conv) THENC
+     RAND_CONV else_conv THENC
+     TRY_CONV COND_CONV) tm
+  end
 
 val unfold_cases =
-  simp [cf_cases_def] \\
-  CONSEQ_CONV_TAC (CONSEQ_HO_REWRITE_CONV ([local_elim], [], [])) \\
-  CONV_TAC (LAND_CONV clean_cases_conv) \\
-  simp []
+  rewrite_tac [cf_cases_def] THEN
+  CONSEQ_CONV_TAC (CONSEQ_HO_REWRITE_CONV ([local_elim], [], [])) THEN
+  CONV_TAC (LAND_CONV clean_cases_conv) THEN asm_simp_tac std_ss []
 
 (* FIXME srw_ss () *)
 
@@ -703,10 +711,7 @@ fun validate_pat_conv tm = let
   val th = conv' tm
 in if Teq (rhs (concl th)) then th else fail () end
 
-val validate_pat_all_conv =
-  REPEATC (
-    RAND_CONV validate_pat_conv THENC RW.RW_CONV [boolTheory.AND_CLAUSES]
-  )
+val validate_pat_all_conv = NO_CONV (* TODO *)
 
 (* FIXME srw_ss () *)
 
@@ -733,14 +738,16 @@ val xcases =
   xpull_check_not_needed \\
   unfold_cases \\
   CONV_TAC validate_pat_all_conv \\
-  reduce_can_pmatch_all_tac
+  reduce_can_pmatch_all_tac (* TODO does this do anything now? *)
 
 (* [xmatch] *)
 
 val xmatch_base =
-  xpull_check_not_needed \\
-  head_unfold cf_match_def \\ irule local_elim \\
-  CONV_TAC cf_eval \\
+  xpull_check_not_needed THEN
+  head_unfold cf_match_def THEN
+  CONSEQ_CONV_TAC (CONSEQ_HO_REWRITE_CONV ([local_elim], [], [])) THEN
+  CONV_TAC (QUANT_CONV (LAND_CONV cf_eval)) THEN
+  asm_simp_tac (bool_ss ++ CONJ_ss) [] THEN
   xcases
 
 val xmatch = xmatch_base
