@@ -104,8 +104,8 @@ Proof
 QED
 
 Theorem stack_size_eq:
-  (stack_size(StackFrame n l NONE::stack) = OPTION_MAP2 $+ n (stack_size stack)) /\
-  (stack_size(StackFrame n l (SOME handler)::stack) =
+  (stack_size(StackFrame n l0 l NONE::stack) = OPTION_MAP2 $+ n (stack_size stack)) /\
+  (stack_size(StackFrame n l0 l (SOME handler)::stack) =
      OPTION_MAP2 $+ (OPTION_MAP ($+ 3) n) (stack_size stack)) /\
   (stack_size [] = SOME 1)
 Proof
@@ -269,10 +269,11 @@ Theorem alloc_const:
    s'.stack_limit = s.stack_limit ∧
    s'.stack_size = s.stack_size
 Proof
-  srw_tac[][alloc_def] >>
-  every_case_tac >> full_simp_tac(srw_ss())[] >> srw_tac[][] >>
+  simp[alloc_def,case_eq_thms] >>
+  strip_tac>>
   imp_res_tac pop_env_const >> full_simp_tac(srw_ss())[] >>
-  imp_res_tac gc_const >> full_simp_tac(srw_ss())[]
+  imp_res_tac gc_const >> full_simp_tac(srw_ss())[] >>
+  rw[]
 QED
 
 Theorem alloc_with_const[simp]:
@@ -564,7 +565,7 @@ QED
 
 (*code and gc_fun are unchanged across eval*)
 Theorem pop_env_code_gc_fun_clock:
-    pop_env r = SOME x ⇒
+  pop_env r = SOME x ⇒
   r.code = x.code ∧
   r.code_buffer = x.code_buffer ∧
   r.data_buffer = x.data_buffer ∧
@@ -582,7 +583,6 @@ Proof
 QED
 (* Standard add clock lemma for FBS *)
 
-(* TODO: generated names *)
 Theorem evaluate_add_clock:
    ∀p s r s'.
     evaluate (p,s) = (r,s') ∧ r ≠ SOME TimeOut ⇒
@@ -596,12 +596,15 @@ Proof
   TRY (
     rename1`find_code _ (add_ret_loc _ _)` >>
     Cases_on`get_vars args s`>>full_simp_tac(srw_ss())[]>>
-    Cases_on`find_code dest (add_ret_loc (SOME x) x') s.code s.stack_size`>>full_simp_tac(srw_ss())[]>>
-    PairCases_on`x''`>>PairCases_on`x`>>full_simp_tac(srw_ss())[]>>
-    Cases_on`cut_env x1 s.locals`>>full_simp_tac(srw_ss())[]>>
+    rename1`get_vars _  _ = SOME xx`>>
+    Cases_on`find_code dest (add_ret_loc (SOME x) xx) s.code s.stack_size`>>full_simp_tac(srw_ss())[]>>
+    rename1`find_code _ _ _ _ = SOME yy`>>
+    PairCases_on`yy`>>PairCases_on`x`>>full_simp_tac(srw_ss())[]>>
+    Cases_on`cut_envs (x1,x2) s.locals`>>full_simp_tac(srw_ss())[]>>
     qpat_x_assum`A=(r,s')` mp_tac>>
     rpt(IF_CASES_TAC>>full_simp_tac(srw_ss())[])>>
-    full_case_tac>>full_simp_tac(srw_ss())[]>>Cases_on`q`>>TRY(Cases_on `x''`)>>
+    full_case_tac>>full_simp_tac(srw_ss())[]>>
+    simp[case_eq_thms]>>rw[]>>
     fsrw_tac[ARITH_ss][dec_clock_def]>>
     rev_full_simp_tac(srw_ss()++ARITH_ss)[]>>
     every_case_tac >> full_simp_tac(srw_ss())[] >> rveq >> full_simp_tac(srw_ss())[] >>
@@ -612,14 +615,18 @@ Proof
   TRY (
     rename1`find_code _ (add_ret_loc _ _)` >>
     Cases_on`get_vars args s`>>full_simp_tac(srw_ss())[]>>
-    Cases_on`find_code dest (add_ret_loc ret x') s.code s.stack_size`>>full_simp_tac(srw_ss())[]>>
+    rename1`get_vars _  _ = SOME xx`>>
+    Cases_on`find_code dest (add_ret_loc ret xx) s.code s.stack_size`>>full_simp_tac(srw_ss())[]>>
+    rename1`find_code _ _ _ _ = SOME yy`>>
     Cases_on`ret`>>full_simp_tac(srw_ss())[]>>
-    PairCases_on`x''`>>full_simp_tac(srw_ss())[]>>
-    PairCases_on`x'''`>>full_simp_tac(srw_ss())[]>>
-    Cases_on`cut_env x'''1 s.locals`>>full_simp_tac(srw_ss())[]>>
+    PairCases_on`yy`>>full_simp_tac(srw_ss())[]>>
+    rename1`add_ret_loc (SOME zz)`>>
+    PairCases_on`zz`>>full_simp_tac(srw_ss())[]>>
+    Cases_on`cut_envs (zz1,zz2) s.locals`>>full_simp_tac(srw_ss())[]>>
     qpat_x_assum`A=(r,s')` mp_tac>>
     rpt(IF_CASES_TAC>>full_simp_tac(srw_ss())[])>>
-    Cases_on`evaluate (x''1,call_env x''0 x''2 (push_env x'' (SOME x) (dec_clock s)))`>>Cases_on`q`>>TRY(Cases_on`x'''`)>>
+    simp[case_eq_thms]>>rw[]>>
+    Cases_on`evaluate (yy1,call_env yy0 yy2 (push_env yy (SOME x) (dec_clock s)))`>>Cases_on`q`>>TRY(Cases_on`yy'`)>>
     fsrw_tac[ARITH_ss][dec_clock_def]>>
     rev_full_simp_tac(srw_ss()++ARITH_ss)[]>>srw_tac[][]>>
     every_case_tac >> full_simp_tac(srw_ss())[] >> rveq >> full_simp_tac(srw_ss())[] >>
@@ -694,17 +701,17 @@ Proof
   >- tac
   >- (tac>>imp_res_tac jump_exc_const>>full_simp_tac(srw_ss())[])
   >- tac
-  >-
-     (tac>>fs[]>>pairarg_tac>>fs[]>>
-     every_case_tac>>fs[state_component_equality])
+  >- (
+    tac>>fs[]>>pairarg_tac>>fs[]>>
+    every_case_tac>>fs[state_component_equality])
   >- tac
   >- tac
   >- (tac>>fs[cut_env_def]>> rveq >> fs [])
   >>
     qpat_x_assum`A=(res,rst)` mp_tac>>
     ntac 6 (TOP_CASE_TAC>>full_simp_tac(srw_ss())[])
-    >-
-      (ntac 3 (TOP_CASE_TAC>>full_simp_tac(srw_ss())[state_component_equality])>>
+    >- (
+      ntac 3 (TOP_CASE_TAC>>full_simp_tac(srw_ss())[state_component_equality])>>
       TOP_CASE_TAC>>full_simp_tac(srw_ss())[]>>
       tac2>>
       first_x_assum(qspec_then`r` assume_tac)>>rev_full_simp_tac(srw_ss())[])
@@ -802,14 +809,13 @@ Proof
     qpat_abbrev_tac`opt = find_code _ _ _ _` >>
     Cases_on`opt`>>full_simp_tac(srw_ss())[markerTheory.Abbrev_def]>>
     split_pair_case_tac >> full_simp_tac(srw_ss())[] >>
-    Cases_on`cut_env names s.locals`>>full_simp_tac(srw_ss())[]>>
+    Cases_on`cut_envs names s.locals`>>full_simp_tac(srw_ss())[]>>
     IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
-    CASE_TAC >> full_simp_tac(srw_ss())[] >>
-    CASE_TAC >> full_simp_tac(srw_ss())[] >>
-    CASE_TAC >> full_simp_tac(srw_ss())[] >>
-    CASE_TAC >> full_simp_tac(srw_ss())[] >> rveq >>
-    IF_CASES_TAC >> full_simp_tac(srw_ss())[] >>
-    TRY IF_CASES_TAC >> full_simp_tac(srw_ss())[] >>
+    IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
+    qmatch_goalsub_abbrev_tac`_ ≼ hide`>>
+    rpt(qmatch_goalsub_rename_tac`evaluate (prog,_)`>>
+      CASE_TAC >> full_simp_tac(srw_ss())[] )>>
+    simp[Abbr`hide`]>>
     TRY (
       split_pair_case_tac >> full_simp_tac(srw_ss())[] >>
       split_pair_case_tac >> full_simp_tac(srw_ss())[] >>
@@ -823,13 +829,13 @@ Proof
         rpt(first_x_assum(qspec_then`extra`mp_tac)>>simp[]) >> srw_tac[][] >> full_simp_tac(srw_ss())[] >>
         imp_res_tac evaluate_io_events_mono >> full_simp_tac(srw_ss())[] >>
         imp_res_tac pop_env_const >> rveq >> full_simp_tac(srw_ss())[] >> rev_full_simp_tac(srw_ss())[] >>
-        metis_tac[evaluate_io_events_mono,set_var_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,with_clock_ffi]) >>
+        metis_tac[evaluate_io_events_mono,set_var_const,set_vars_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,set_vars_with_const,with_clock_ffi]) >>
       rpt(first_x_assum(qspec_then`extra`mp_tac)>>simp[]) >> srw_tac[][] >> full_simp_tac(srw_ss())[] >>
       every_case_tac >> full_simp_tac(srw_ss())[] >> rev_full_simp_tac(srw_ss())[] >>
       rpt(first_x_assum(qspec_then`extra`mp_tac)>>simp[]) >> srw_tac[][] >> full_simp_tac(srw_ss())[] >>
       imp_res_tac evaluate_io_events_mono >> full_simp_tac(srw_ss())[] >>
       imp_res_tac pop_env_const >> rveq >> full_simp_tac(srw_ss())[] >> rev_full_simp_tac(srw_ss())[] >>
-      metis_tac[evaluate_io_events_mono,set_var_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,with_clock_ffi]) >>
+      metis_tac[evaluate_io_events_mono,set_var_const,set_vars_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,set_vars_with_const,with_clock_ffi]) >>
     TRY(
       split_pair_case_tac >> full_simp_tac(srw_ss())[] >>
       imp_res_tac evaluate_add_clock >> full_simp_tac(srw_ss())[] >>
@@ -839,12 +845,7 @@ Proof
       rpt(first_x_assum(qspec_then`extra`mp_tac)>>simp[]) >> srw_tac[][] >> full_simp_tac(srw_ss())[] >>
       imp_res_tac evaluate_io_events_mono >> full_simp_tac(srw_ss())[] >>
       imp_res_tac pop_env_const >> rveq >> full_simp_tac(srw_ss())[] >> rev_full_simp_tac(srw_ss())[] >>
-      metis_tac[evaluate_io_events_mono,set_var_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,with_clock_ffi]) >>
-    every_case_tac >> full_simp_tac(srw_ss())[] >> rev_full_simp_tac(srw_ss())[] >> rveq >> full_simp_tac(srw_ss())[] >>
-    rpt(first_x_assum(qspec_then`extra`mp_tac)>>simp[]) >> srw_tac[][] >>
-    imp_res_tac evaluate_io_events_mono >> full_simp_tac(srw_ss())[] >>
-    imp_res_tac pop_env_const >> rveq >> full_simp_tac(srw_ss())[] >> rev_full_simp_tac(srw_ss())[] >>
-    metis_tac[evaluate_io_events_mono,set_var_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,with_clock_ffi]) >>
+      metis_tac[evaluate_io_events_mono,set_var_const,set_vars_const,IS_PREFIX_TRANS,SND,PAIR,set_var_with_const,with_clock_ffi])) >>
   every_case_tac >> full_simp_tac(srw_ss())[] >>
   rpt (pairarg_tac >> full_simp_tac(srw_ss())[]) >>
   every_case_tac >> full_simp_tac(srw_ss())[] >>
@@ -855,7 +856,7 @@ Proof
 QED
 
 Theorem alloc_code_gc_fun_const:
-    alloc x names s = (res,t) ⇒
+  alloc x names s = (res,t) ⇒
   t.code = s.code /\
   t.code_buffer = s.code_buffer /\
   t.data_buffer = s.data_buffer /\
@@ -901,7 +902,7 @@ Proof
      \\ fs[state_component_equality,call_env_def,flush_state_def
           ,push_env_def,LET_THM,env_to_list_def,dec_clock_def]
      \\ TOP_CASE_TAC>>fs[state_component_equality]
-     \\ ntac 6 (TOP_CASE_TAC>>fs[set_var_def])
+     \\ ntac 6 (TOP_CASE_TAC>>fs[set_var_def,set_vars_def])
      \\ imp_res_tac pop_env_code_gc_fun_clock \\ fs[])
   \\ fs[jump_exc_def]
   \\ EVERY_CASE_TAC
@@ -934,10 +935,10 @@ QED
 
 (*Stacks look the same except for the keys (e.g. recoloured and in order)*)
 val s_frame_val_eq_def = Define`
-  (s_frame_val_eq (StackFrame n ls NONE) (StackFrame n' ls' NONE)
-     <=> MAP SND ls = MAP SND ls' /\ n=n') /\
-  (s_frame_val_eq (StackFrame n ls (SOME y)) (StackFrame n' ls' (SOME y'))
-     <=> MAP SND ls = MAP SND ls' /\ y=y' /\ n=n') /\
+  (s_frame_val_eq (StackFrame n l0 ls NONE) (StackFrame n' l0' ls' NONE)
+     <=> MAP SND ls = MAP SND ls' /\ l0 = l0' /\ n = n') /\
+  (s_frame_val_eq (StackFrame n l0 ls (SOME y)) (StackFrame n' l0' ls' (SOME y'))
+     <=> MAP SND ls = MAP SND ls' /\ y=y' /\ l0 = l0' /\ n=n') /\
   (s_frame_val_eq _ _ = F)`
 
 val s_val_eq_def = Define`
@@ -948,10 +949,10 @@ val s_val_eq_def = Define`
 
 (*Stacks look the same except for the values (e.g. result of gc)*)
 val s_frame_key_eq_def = Define`
-  (s_frame_key_eq (StackFrame n ls NONE) (StackFrame n' ls' NONE)
-     <=> MAP FST ls = MAP FST ls' /\ n=n') /\
-  (s_frame_key_eq (StackFrame n ls (SOME y)) (StackFrame n' ls' (SOME y'))
-     <=> MAP FST ls = MAP FST ls' /\ y=y' /\ n=n') /\
+  (s_frame_key_eq (StackFrame n l0 ls NONE) (StackFrame n' l0' ls' NONE)
+     <=> MAP FST ls = MAP FST ls' /\ l0=l0' /\ n=n') /\
+  (s_frame_key_eq (StackFrame n l0 ls (SOME y)) (StackFrame n' l0' ls' (SOME y'))
+     <=> MAP FST ls = MAP FST ls' /\ y=y' /\ l0=l0' /\ n=n') /\
   (s_frame_key_eq _ _ = F)`
 
 val s_key_eq_def = Define`
@@ -1080,7 +1081,7 @@ val s_val_eq_dec_stack = Q.prove(
    first_x_assum(qspecl_then [`t`,`x'`] assume_tac)>> rev_full_simp_tac(srw_ss())[]>>
    strip_tac>>pop_assum (SUBST1_TAC o SYM)>>
    full_simp_tac(srw_ss())[s_frame_val_eq_def,s_val_eq_def]>>
-   `LENGTH l' = LENGTH l` by
+   `LENGTH l0' = LENGTH l` by
     (Cases_on `handler` \\ Cases_on `o'` \\ Cases_on `o0` \\ full_simp_tac(srw_ss())[s_frame_val_eq_def]
      \\ metis_tac[LENGTH_MAP]) \\ full_simp_tac(srw_ss())[NOT_LESS]
    \\ Cases_on `handler` \\ Cases_on `o'` \\ Cases_on `o0` \\ full_simp_tac(srw_ss())[s_frame_val_eq_def,s_val_eq_def]
@@ -1166,18 +1167,20 @@ QED
 Theorem push_env_pop_env_s_key_eq:
    ∀s t x b. s_key_eq (push_env x b s).stack t.stack ⇒
        ∃n l ls opt.
-              t.stack = (StackFrame n l opt)::ls ∧
+              t.stack = (StackFrame n (toAList (FST x)) l opt)::ls ∧
               ∃y. (pop_env t = SOME y ∧
-                   y.locals = fromAList l ∧
-                   domain x = domain y.locals ∧
+                   y.locals = union (fromAList (toAList (FST x))) (fromAList l) ∧
+                   (domain (FST x)) ∪ (domain (SND x))  = domain y.locals ∧
                    s_key_eq s.stack y.stack)
 Proof
   srw_tac[][]>>Cases_on`b`>>TRY(PairCases_on`x'`)>>full_simp_tac(srw_ss())[push_env_def]>>
   full_simp_tac(srw_ss())[LET_THM,env_to_list_def]>>Cases_on`t.stack`>>
   full_simp_tac(srw_ss())[s_key_eq_def,pop_env_def]>>BasicProvers.EVERY_CASE_TAC>>
   full_simp_tac(srw_ss())[domain_fromAList,s_frame_key_eq_def]>>
+  rw[]>>
+  simp[domain_union,domain_fromAList]>>
   qpat_x_assum `A = MAP FST l` (SUBST1_TAC o SYM)>>
-  full_simp_tac(srw_ss())[EXTENSION,mem_list_rearrange,MEM_MAP,QSORT_MEM,MEM_toAList
+  fs[EXTENSION,mem_list_rearrange,MEM_MAP,QSORT_MEM,MEM_toAList
     ,EXISTS_PROD,domain_lookup]
 QED
 
@@ -1270,9 +1273,9 @@ val s_val_eq_tail = Q.prove(
   full_simp_tac(srw_ss())[s_val_eq_def]);
 
 val s_key_eq_LASTN_exists = Q.prove(
-  `!s t n m e y xs. s_key_eq s t /\
-    LASTN n s = StackFrame m e (SOME y)::xs
-    ==> ?e' ls. LASTN n t = StackFrame m e' (SOME y)::ls
+  `!s t n m e0 e y xs. s_key_eq s t /\
+    LASTN n s = StackFrame m e0 e (SOME y)::xs
+    ==> ?e' ls. LASTN n t = StackFrame m e0 e' (SOME y)::ls
         /\ MAP FST e' = MAP FST e
         /\ s_key_eq xs ls`,
    rpt strip_tac>>
@@ -1283,9 +1286,9 @@ val s_key_eq_LASTN_exists = Q.prove(
    Cases_on`h`>>Cases_on`o'`>>Cases_on`o0`>>full_simp_tac(srw_ss())[s_frame_key_eq_def]);
 
 Theorem s_val_eq_LASTN_exists:
-   !s t n m e y xs. s_val_eq s t /\
-   LASTN n s = StackFrame m e (SOME y)::xs
-    ==> ?e' ls. LASTN n t = StackFrame m e' (SOME y)::ls
+   !s t n m e0 e y xs. s_val_eq s t /\
+   LASTN n s = StackFrame m e0 e (SOME y)::xs
+    ==> ?e' ls. LASTN n t = StackFrame m e0 e' (SOME y)::ls
        /\ MAP SND e' = MAP SND e
        /\ s_val_eq xs ls
 Proof
@@ -1331,7 +1334,7 @@ Proof
   rw[s_val_eq_def] >>
   rename1 `s_frame_val_eq x y` >>
   Cases_on `x` >> Cases_on `y` >>
-  rename1 `s_frame_val_eq (StackFrame _ _ ss1) (StackFrame _ _ ss2)` >>
+  rename1 `s_frame_val_eq (StackFrame _ _ _ ss1) (StackFrame _ _ _ ss2)` >>
   Cases_on `ss1` >> Cases_on `ss2` >> fs[s_frame_val_eq_def,stack_size_eq]
 QED
 
@@ -1366,15 +1369,15 @@ Theorem evaluate_stack_swap:
                                result should be exactly the same*)
       | (SOME (Exception x y),s1) =>
             (s.handler<LENGTH s.stack) /\ (*precondition for jump_exc*)
-            (?e n ls m lss.
-                (LASTN (s.handler+1) s.stack = StackFrame m e (SOME n)::ls) /\
+            (?e0 e n ls m lss.
+                (LASTN (s.handler+1) s.stack = StackFrame m e0 e (SOME n)::ls) /\
                 Abbrev (m = s1.locals_size) /\
                 (MAP FST e = MAP FST lss /\
-                   s1.locals = fromAList lss) /\
+                   s1.locals = union (fromAList e0) (fromAList lss)) /\
                 (s_key_eq s1.stack ls) /\ (s1.handler = case n of(a,b,c)=>a) /\
                 (!xs e' ls'.
                            (LASTN (s.handler+1) xs =
-                             StackFrame m e' (SOME n):: ls') /\
+                             StackFrame m e0 e' (SOME n):: ls') /\
                            (s_val_eq s.stack xs) ==> (*this implies n=n' and m=m'*)
                            ?st locs.
                            (evaluate (c,s with stack := xs) =
@@ -1383,7 +1386,7 @@ Theorem evaluate_stack_swap:
                                           handler := case n of (a,b,c) => a;
                                           locals := locs |>) /\
                             (?lss'. MAP FST e' = MAP FST lss' /\
-                               locs = fromAList lss' /\
+                               locs = union (fromAList e0) (fromAList lss') /\
                                MAP SND lss = MAP SND lss')/\
                             s_val_eq s1.stack st /\ s_key_eq ls' st)))
       (*NONE, SOME Result cases*)
@@ -1396,9 +1399,9 @@ Theorem evaluate_stack_swap:
 Proof
   simp_tac std_ss [markerTheory.Abbrev_def]
   >> ho_match_mp_tac (evaluate_ind |> Q.SPEC`UNCURRY P` |> SIMP_RULE (srw_ss())[] |> Q.GEN`P`) >> srw_tac[][]
-  >-(*Skip*)
+  >- (*Skip*)
     (fs [evaluate_def,s_key_eq_refl]>>srw_tac[][]>>HINT_EXISTS_TAC>>fs[s_key_eq_refl])
-  >-(*Alloc*)
+  >- (*Alloc*)
     (fs[evaluate_def,alloc_def]>>reverse every_case_tac>>
     (every_case_tac>>
     IMP_RES_TAC gc_s_key_eq>>
@@ -1514,8 +1517,8 @@ Proof
     ntac 5 strip_tac>>
     res_tac>>
     rev_full_simp_tac(srw_ss())[]>>simp[])
-  >-(*Seq*)
-    (full_simp_tac(srw_ss())[evaluate_def]>>
+  >- (  (*Seq*)
+    full_simp_tac(srw_ss())[evaluate_def]>>
     Cases_on`evaluate(c',s)`>>
     full_simp_tac(srw_ss())[LET_THM]>>
     IF_CASES_TAC>-
@@ -1529,37 +1532,34 @@ Proof
         first_x_assum(qspec_then `st` assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
         HINT_EXISTS_TAC>>metis_tac[s_key_eq_trans])
         >-
-        (ASSUME_TAC (INST_TYPE [``:'b``|->``:'a``]s_key_eq_LASTN_exists)>>
-        (*get the result stack from first eval*)
-        IMP_RES_TAC s_key_eq_length>>full_simp_tac(srw_ss())[]>>
-        first_x_assum(qspecl_then [`r.stack`,`s.stack`,`s.handler+1`,`r'.locals_size`,`e`,`n`,`ls`] assume_tac)>>
-        `s_key_eq r.stack s.stack` by srw_tac[][s_key_eq_sym]>>
-        full_simp_tac(srw_ss())[]>>rev_full_simp_tac(srw_ss())[]>>Q.EXISTS_TAC`lss`>>
-        simp[]>>CONJ_TAC>-metis_tac[s_key_eq_trans]>>
-        rpt strip_tac>>
-        first_x_assum(qspec_then `xs` assume_tac)>>
-        rev_full_simp_tac(srw_ss())[]>>
-        IMP_RES_TAC s_key_eq_LASTN_exists>>
-        last_x_assum(qspecl_then [`st`,`e'''`,`ls'''`] assume_tac)>>
-        rev_full_simp_tac(srw_ss())[]>>
-        HINT_EXISTS_TAC>>
-        Q.EXISTS_TAC`fromAList lss'`>>
-        full_simp_tac(srw_ss())[]>>
-        CONJ_TAC>- (Q.EXISTS_TAC`lss'`>>full_simp_tac(srw_ss())[])>>
-        metis_tac[s_key_eq_trans])>>
+          (ASSUME_TAC (INST_TYPE [``:'b``|->``:'a``]s_key_eq_LASTN_exists)>>
+          (*get the result stack from first eval*)
+          IMP_RES_TAC s_key_eq_length>>full_simp_tac(srw_ss())[]>>
+          first_x_assum(qspecl_then [`r.stack`,`s.stack`,`s.handler+1`,`r'.locals_size`,`e0`,`e`,`n`,`ls`] assume_tac)>>
+          `s_key_eq r.stack s.stack` by fs[s_key_eq_sym]>>
+          full_simp_tac(srw_ss())[]>>rev_full_simp_tac(srw_ss())[]>>
+          Q.EXISTS_TAC`lss`>>
+          simp[]>>CONJ_TAC>-metis_tac[s_key_eq_trans]>>
+          rpt strip_tac>>
+          first_x_assum(qspec_then `xs` assume_tac)>>
+          rev_full_simp_tac(srw_ss())[]>>
+          IMP_RES_TAC s_key_eq_LASTN_exists>>
+          last_x_assum(qspecl_then [`st`,`e'''`,`ls'''`] assume_tac)>>
+          rev_full_simp_tac(srw_ss())[]>>
+          simp[state_component_equality]>>
+          metis_tac[s_key_eq_trans])>>
         rpt strip_tac>>
         first_x_assum(qspec_then `xs` assume_tac)>>rev_full_simp_tac(srw_ss())[])>>
       Cases_on`q`>>full_simp_tac(srw_ss())[]>>
       Cases_on`x`>>full_simp_tac(srw_ss())[]>>
       rpt strip_tac>-
         (first_x_assum(qspec_then `xs` assume_tac)>>rev_full_simp_tac(srw_ss())[]>>HINT_EXISTS_TAC>>
-        full_simp_tac(srw_ss())[])>-
-      (Q.EXISTS_TAC`lss`>>full_simp_tac(srw_ss())[]>>
-      rpt strip_tac>>
-      first_x_assum (qspecl_then [`xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
-      HINT_EXISTS_TAC>>
-      Q.EXISTS_TAC`fromAList lss'`>>full_simp_tac(srw_ss())[]>>
-      Q.EXISTS_TAC`lss'`>>full_simp_tac(srw_ss())[])>>
+        full_simp_tac(srw_ss())[])
+      >-
+        (Q.EXISTS_TAC`lss`>>full_simp_tac(srw_ss())[]>>
+        rpt strip_tac>>
+        first_x_assum (qspecl_then [`xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
+        simp[state_component_equality]>>metis_tac[])>>
       first_x_assum (qspec_then `xs` assume_tac)>> rev_full_simp_tac(srw_ss())[]>>HINT_EXISTS_TAC>>full_simp_tac(srw_ss())[])
   >-(*Return*)
     (full_simp_tac(srw_ss())[evaluate_def]>> every_case_tac>>
@@ -1571,7 +1571,7 @@ Proof
     (full_simp_tac(srw_ss())[evaluate_def]>>every_case_tac>>full_simp_tac(srw_ss())[get_var_def,jump_exc_def]>>
     qpat_x_assum `(a = SOME x)` mp_tac>>
     every_case_tac>>full_simp_tac(srw_ss())[state_component_equality]>>
-    strip_tac>> Q.EXISTS_TAC `l`>>
+    strip_tac>> Q.EXISTS_TAC `l0`>>
     full_simp_tac(srw_ss())[EQ_SYM_EQ,s_key_eq_refl]>>
     rpt strip_tac>>
     IMP_RES_TAC s_val_eq_length>>full_simp_tac(srw_ss())[EQ_SYM_EQ,state_component_equality]>>
@@ -1596,9 +1596,7 @@ Proof
     IMP_RES_TAC s_val_eq_LASTN_exists>>
     last_x_assum(qspecl_then [`xs`,`e'''`,`ls'''`] assume_tac)>>
     Cases_on`ri`>>rev_full_simp_tac(srw_ss())[get_var_def,get_var_imm_def]>>
-    HINT_EXISTS_TAC>>full_simp_tac(srw_ss())[]>>
-    qexists_tac`fromAList lss'`>>full_simp_tac(srw_ss())[]>>
-    qexists_tac`lss'`>>full_simp_tac(srw_ss())[])
+    simp[state_component_equality]>>metis_tac[])
   >- (*LocValue*) (
     fs[evaluate_def,set_var_def,state_component_equality,s_key_eq_refl]
     \\ rw[s_key_eq_refl,state_component_equality] )
@@ -1657,175 +1655,129 @@ Proof
      first_x_assum (qspecl_then [`xs`,`e'`,`ls'`] mp_tac) >>
      rw [] >>
      fs [] >> metis_tac [])
-    >>
+  >>
     (*Returning call*)
-    PairCases_on`x'`>> full_simp_tac(srw_ss())[]>>
+  PairCases_on`x'`>> full_simp_tac(srw_ss())[]>>
+  IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
+  Cases_on`cut_envs (x'1,x'2) s.locals`>>full_simp_tac(srw_ss())[]>>
+  Cases_on`s.clock=0`>-
+    (full_simp_tac(srw_ss())[call_env_def,flush_state_def,fromList2_def]>>srw_tac[][]>>
+    assume_tac get_vars_stack_swap_simp>>
+    first_x_assum(qspec_then `args` (SUBST1_TAC)) >>
+    simp [] >> every_case_tac >> fs[] >> rfs [] >>
+    rw[state_component_equality] >>
+    Cases_on `handler` >-
+      (rw[push_env_def,ELIM_UNCURRY,stack_size_eq] >>
+       imp_res_tac s_val_eq_stack_size >> rw[]) >>
+    rename1 `push_env _ (SOME handler)` >>
+    PairCases_on `handler` >>
+    rw[push_env_def,ELIM_UNCURRY,stack_size_eq] >>
+    imp_res_tac s_val_eq_stack_size >> rw[])>>
+  full_simp_tac(srw_ss())[]>>
+  Cases_on`evaluate (q',call_env q r' (push_env x' handler (dec_clock s)))`>>
+  Cases_on`q''`>>full_simp_tac(srw_ss())[]>>Cases_on`x''`>>full_simp_tac(srw_ss())[]
+  >- (
+    (*Result*)
+    full_simp_tac(srw_ss())[get_vars_stack_swap_simp]>>
     IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
-    Cases_on`cut_env x'1 s.locals`>>full_simp_tac(srw_ss())[]>>
-    Cases_on`s.clock=0`>-
-      (full_simp_tac(srw_ss())[call_env_def,flush_state_def,fromList2_def]>>srw_tac[][]>>
-      assume_tac get_vars_stack_swap_simp>>
-      first_x_assum(qspec_then `args` (SUBST1_TAC)) >>
-      simp [] >> every_case_tac >> fs[] >> rfs [] >>
-      rw[state_component_equality] >>
-      Cases_on `handler` >-
-        (rw[push_env_def,ELIM_UNCURRY,stack_size_eq] >>
-         imp_res_tac s_val_eq_stack_size >> rw[]) >>
-      rename1 `push_env _ (SOME handler)` >>
-      PairCases_on `handler` >>
-      rw[push_env_def,ELIM_UNCURRY,stack_size_eq] >>
-      imp_res_tac s_val_eq_stack_size >> rw[]
-      )>>
-    full_simp_tac(srw_ss())[]>>
-    Cases_on`evaluate (q',call_env q r' (push_env x' handler (dec_clock s)))`>>
-    Cases_on`q''`>>full_simp_tac(srw_ss())[]>>Cases_on`x''`>>full_simp_tac(srw_ss())[]
-    >-
-      (*Result*)
-      (full_simp_tac(srw_ss())[get_vars_stack_swap_simp]>>
-      IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
-      full_case_tac>>
-      IF_CASES_TAC>>
-      full_simp_tac(srw_ss())[set_var_def,call_env_def,flush_state_def]>>
-      IMP_RES_TAC push_env_pop_env_s_key_eq>>
-      qpat_x_assum`_.stack = _`kall_tac>>
-      qpat_x_assum`_.locals = fromAList _`kall_tac>>
-      qpat_x_assum`domain _ = domain _.locals`kall_tac>>
-      full_simp_tac(srw_ss())[dec_clock_def,SOME_11]>>
-      Cases_on`evaluate(x'2,x'' with locals:=insert x'0 w0 x''.locals)`>>full_simp_tac(srw_ss())[]>>
-      Cases_on`q''`>>TRY(Cases_on`x'''`)>>full_simp_tac(srw_ss())[]>>rev_full_simp_tac(srw_ss())[]>>
-      `s_key_eq s.stack x''.stack` by full_simp_tac(srw_ss())[EQ_SYM_EQ]>>full_simp_tac(srw_ss())[]>>
-      (*Inductive Result and None*)
-      TRY
-      (qho_match_abbrev_tac`A ∧ B /\ C` >> unabbrev_all_tac>>
-      CONJ_TAC
-      >- metis_tac[s_key_eq_trans]>>
-      CONJ_ASM1_TAC >-
+    full_case_tac>>
+    IF_CASES_TAC>>
+    full_simp_tac(srw_ss())[set_var_def,set_vars_def,call_env_def,flush_state_def]>>
+    IMP_RES_TAC push_env_pop_env_s_key_eq>>
+    qpat_x_assum`_.stack = _`kall_tac>>
+    qpat_x_assum`_.locals = _`kall_tac>>
+    qpat_x_assum`_ = domain _.locals`kall_tac>>
+    full_simp_tac(srw_ss())[dec_clock_def,SOME_11]>>
+    Cases_on`evaluate (x'3,x'' with locals := alist_insert x'0 l x''.locals)`>>fs[]>>
+    Cases_on`q''`>>TRY(Cases_on`x'''`)>>full_simp_tac(srw_ss())[]>>rev_full_simp_tac(srw_ss())[]>>
+    `s_key_eq s.stack x''.stack` by full_simp_tac(srw_ss())[EQ_SYM_EQ]>>full_simp_tac(srw_ss())[]>>
+    (*Inductive Result and None*)
+    TRY
+    (qho_match_abbrev_tac`A ∧ B /\ C` >> unabbrev_all_tac>>
+    CONJ_TAC
+    >- metis_tac[s_key_eq_trans]>>
+    CONJ_ASM1_TAC >-
       (Cases_on`handler`>>
       TRY (rename1 `s_key_eq (push_env _ (SOME stkf) s).stack r.stack` >>
       PairCases_on `stkf`)>>
       full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def,pop_env_def]>>
       Cases_on`r.stack`>>full_simp_tac(srw_ss())[s_key_eq_def]>>
-      Cases_on`h` >> rename1 `StackFrame _ _ excp'::t` >> Cases_on`excp'` >>
-      TRY (rename1 `StackFrame _ _ (SOME excp)::t` >>
+      Cases_on`h` >> rename1 `StackFrame _ _ _ excp'::t` >> Cases_on`excp'` >>
+      TRY (rename1 `StackFrame _ _ _ (SOME excp)::t` >>
       PairCases_on `excp`)>>
       full_simp_tac(srw_ss())[s_frame_key_eq_def]>>
       full_simp_tac(srw_ss())[state_component_equality]>>rev_full_simp_tac(srw_ss())[]) >>
-      ntac 2 strip_tac>>
-      `!a. s_val_eq (a::s.stack) (a::xs)` by
-       (strip_tac>> full_simp_tac(srw_ss())[s_val_eq_def]>>
-       Cases_on`a`>> rename1 `StackFrame _ l excp'` >> Cases_on`excp'` >>
-       full_simp_tac(srw_ss())[s_frame_val_eq_def])>>
-      Cases_on`handler`>>
-      (TRY (rename1 `s_key_eq (push_env _ (SOME stkf) s).stack r.stack` >>
-      PairCases_on `stkf`)>>
-      full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
-      qpat_abbrev_tac `frame = StackFrame lsz ls n`>>
-      first_x_assum (qspec_then `frame` assume_tac)>>
-      drule s_val_eq_stack_size >> strip_tac >> fs [] >>
-      last_x_assum(qspec_then `frame::xs` assume_tac)>>
-      rev_full_simp_tac(srw_ss())[]>>
-      `LENGTH xs = LENGTH s.stack` by full_simp_tac(srw_ss())[s_val_eq_length]>> full_simp_tac(srw_ss())[]>>
-      Cases_on`st`>>full_simp_tac(srw_ss())[s_key_eq_def]>>
-      Cases_on`r.stack`>>full_simp_tac(srw_ss())[pop_env_def,s_key_eq_def]>>
-      `h = h'` by metis_tac[s_frame_key_eq_sym,s_frame_key_eq_trans,
-                            s_frame_val_and_key_eq,s_val_eq_def]>>
-      Cases_on`h'`>>Cases_on`o0`>>full_simp_tac(srw_ss())[]>>
-      full_simp_tac(srw_ss())[state_component_equality]>>
-      IMP_RES_TAC s_val_eq_tail>>
-      first_x_assum(qspec_then `t` assume_tac)>> rev_full_simp_tac(srw_ss())[]>>
-      TRY(rename1 `StackFrame o' l (SOME excp'')` >> Cases_on`excp''`>>
-          `x''.stack = t'` by full_simp_tac(srw_ss())[EQ_SYM_EQ]>>full_simp_tac(srw_ss())[]>>rev_full_simp_tac(srw_ss())[])>>
-      Q.EXISTS_TAC`st`>> full_simp_tac(srw_ss())[state_component_equality]
-      >-
-        (`x'' with <|locals := insert x'0 w0 x''.locals; stack := t|> =
-        r with <|locals := insert x'0 w0 x''.locals;
-                  locals_size := x''.locals_size; stack := t|>` by
-          full_simp_tac(srw_ss())[state_component_equality]>>
-        pop_assum SUBST_ALL_TAC>>
-        srw_tac[][]>>
-        metis_tac[state_component_equality,EQ_SYM_EQ,s_key_eq_trans])
-      >>
-        (`x'' with <|locals := insert x'0 w0 x''.locals; stack := t|> =
-        r with <|locals := insert x'0 w0 x''.locals; locals_size := x''.locals_size;
-                 stack := t; handler:=s.handler|>` by
-          full_simp_tac(srw_ss())[state_component_equality]>>
-        pop_assum SUBST_ALL_TAC>>
-        srw_tac[][]>>
-        metis_tac[state_component_equality,EQ_SYM_EQ,s_key_eq_trans])))
-      (*Exceptions*)
-      >-
-        (`s.handler = x''.handler` by
-          (Cases_on`handler`>>
-          TRY (rename1 `(push_env _ (SOME excp') s).stack ` >> PairCases_on `excp'`)>>
-          full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
-          Cases_on`r.stack`>>full_simp_tac(srw_ss())[pop_env_def,s_key_eq_def]>>
-          Cases_on`h`>>
-          Cases_on`o0`>>  TRY (rename1 `r.stack = StackFrame _ _ (SOME stkf)::t` >>
-          PairCases_on `stkf`)>>
-          full_simp_tac(srw_ss())[s_frame_key_eq_def]>>
-          full_simp_tac(srw_ss())[state_component_equality]
-          )>>
-        CONJ_ASM1_TAC >- metis_tac[s_key_eq_length]>>
-        `s_key_eq x''.stack s.stack` by metis_tac[s_key_eq_sym]>>
-        IMP_RES_TAC s_key_eq_LASTN_exists>>
-        full_simp_tac(srw_ss())[]>>
-        (*check*)
-        qexists_tac`lss`>>full_simp_tac(srw_ss())[]>>
-        CONJ_TAC>-
-          metis_tac[s_key_eq_trans]
-        >>
-        rpt strip_tac>>full_simp_tac(srw_ss())[]>>
-        `!a. s_val_eq (a::s.stack) (a::xs)` by
-         (strip_tac>> full_simp_tac(srw_ss())[s_val_eq_def]>>Cases_on`a`>>
-          Cases_on`o'`>>Cases_on`o0`>>full_simp_tac(srw_ss())[s_frame_val_eq_def])>>
-        Cases_on`handler`>>
-        TRY (rename1 `(push_env _ (SOME excp'') s).stack ` >> PairCases_on `excp''`)>>
-        full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
-        qpat_abbrev_tac `frame = StackFrame SS A B`>>
-        first_x_assum (qspec_then `frame` assume_tac)>>
-        drule s_val_eq_stack_size >> strip_tac >> fs [] >>
-        last_x_assum(qspec_then `frame::xs` assume_tac)>>
-        rev_full_simp_tac(srw_ss())[]>>
-        `LENGTH xs = LENGTH s.stack` by full_simp_tac(srw_ss())[s_val_eq_length]>> full_simp_tac(srw_ss())[]>>
-        Cases_on`st`>>full_simp_tac(srw_ss())[s_key_eq_def]>>
-        Cases_on`r.stack`>>full_simp_tac(srw_ss())[pop_env_def,s_key_eq_def]>>
-        `h = h'` by metis_tac[s_frame_key_eq_sym,s_frame_key_eq_trans,
-                              s_frame_val_and_key_eq,s_val_eq_def]>>
-        Cases_on`h'`>>Cases_on`o0`>>
-        full_simp_tac(srw_ss())[Abbr`frame`,s_frame_key_eq_def]>>
-        TRY(rename1 `r.stack = StackFrame _ _ (SOME stkf)::t'` >> PairCases_on`stkf`)>>
+    ntac 2 strip_tac>>
+    `!a. s_val_eq (a::s.stack) (a::xs)` by
+     (strip_tac>> full_simp_tac(srw_ss())[s_val_eq_def]>>
+     Cases_on`a`>> rename1 `StackFrame _ _ ll excp'` >> Cases_on`excp'` >>
+     full_simp_tac(srw_ss())[s_frame_val_eq_def])>>
+    Cases_on`handler`>>
+    (TRY (rename1 `s_key_eq (push_env _ (SOME stkf) s).stack r.stack` >>
+    PairCases_on `stkf`)>>
+    full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
+    qpat_abbrev_tac `frame = StackFrame lsz _ ls n`>>
+    first_x_assum (qspec_then `frame` assume_tac)>>
+    drule s_val_eq_stack_size >> strip_tac >> fs [] >>
+    last_x_assum(qspec_then `frame::xs` assume_tac)>>
+    rev_full_simp_tac(srw_ss())[]>>
+    `LENGTH xs = LENGTH s.stack` by full_simp_tac(srw_ss())[s_val_eq_length]>> full_simp_tac(srw_ss())[]>>
+    Cases_on`st`>>full_simp_tac(srw_ss())[s_key_eq_def]>>
+    Cases_on`r.stack`>>full_simp_tac(srw_ss())[pop_env_def,s_key_eq_def]>>
+    `h = h'` by metis_tac[s_frame_key_eq_sym,s_frame_key_eq_trans,
+                          s_frame_val_and_key_eq,s_val_eq_def]>>
+    Cases_on`h'`>>Cases_on`o0`>>full_simp_tac(srw_ss())[]>>
+    full_simp_tac(srw_ss())[state_component_equality]>>
+    IMP_RES_TAC s_val_eq_tail>>
+    first_x_assum(qspec_then `t` assume_tac)>> rev_full_simp_tac(srw_ss())[]>>
+    TRY(rename1 `StackFrame o' _ ll (SOME excp'')` >> Cases_on`excp''`>>
+        `x''.stack = t'` by full_simp_tac(srw_ss())[EQ_SYM_EQ]>>full_simp_tac(srw_ss())[]>>rev_full_simp_tac(srw_ss())[])>>
+    Q.EXISTS_TAC`st`>> full_simp_tac(srw_ss())[state_component_equality]
+    >-
+      (`x'' with <|locals := alist_insert x'0 l x''.locals; stack := t|> =
+      r with <|locals := alist_insert x'0 l x''.locals;
+                locals_size := x''.locals_size; stack := t|>` by
         full_simp_tac(srw_ss())[state_component_equality]>>
-        IMP_RES_TAC s_val_eq_tail>>
-        first_x_assum(qspec_then `t` assume_tac)>> rev_full_simp_tac(srw_ss())[]>>
-        IMP_RES_TAC s_key_eq_LASTN_exists>>
-        first_x_assum(qspecl_then[`e''''`,`ls''''`] assume_tac)>>rev_full_simp_tac(srw_ss())[]
-        >-
-          (`x'' with <|locals := insert x'0 w0 x''.locals; stack := t|> =
-           r with <|locals := insert x'0 w0 x''.locals; locals_size := x''.locals_size; stack := t|>` by
-             full_simp_tac(srw_ss())[state_component_equality]>>
-          full_simp_tac(srw_ss())[PULL_EXISTS]>>
-          HINT_EXISTS_TAC>>full_simp_tac(srw_ss())[]>>
-          qexists_tac`lss'`>>full_simp_tac(srw_ss())[]>>
-          metis_tac[s_key_eq_trans])
-        >>
-          (`x'' with <|locals := insert x'0 w0 x''.locals; stack := t|> =
-          r with <|locals := insert x'0 w0 x''.locals; locals_size := x''.locals_size; stack := t; handler:=stkf0|>` by
-            full_simp_tac(srw_ss())[state_component_equality]>>
-          full_simp_tac(srw_ss())[PULL_EXISTS]>>
-          HINT_EXISTS_TAC>>full_simp_tac(srw_ss())[]>>
-          qexists_tac`lss'`>>full_simp_tac(srw_ss())[]>>
-          metis_tac[s_key_eq_trans]))
-      (*The rest*)
+      pop_assum SUBST_ALL_TAC>>
+      srw_tac[][]>>
+      metis_tac[state_component_equality,EQ_SYM_EQ,s_key_eq_trans])
+    >>
+      (`x'' with <|locals := alist_insert x'0 l x''.locals; stack := t|> =
+      r with <|locals := alist_insert x'0 l x''.locals; locals_size := x''.locals_size;
+               stack := t; handler:=s.handler|>` by
+        full_simp_tac(srw_ss())[state_component_equality]>>
+      pop_assum SUBST_ALL_TAC>>
+      srw_tac[][]>>
+      metis_tac[state_component_equality,EQ_SYM_EQ,s_key_eq_trans])))
+    (*Exceptions*)
+    >-
+      (`s.handler = x''.handler` by
+        (Cases_on`handler`>>
+        TRY (rename1 `(push_env _ (SOME excp') s).stack ` >> PairCases_on `excp'`)>>
+        full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
+        Cases_on`r.stack`>>full_simp_tac(srw_ss())[pop_env_def,s_key_eq_def]>>
+        Cases_on`h`>>
+        Cases_on`o0`>>  TRY (rename1 `r.stack = StackFrame _ _ _ (SOME stkf)::t` >>
+        PairCases_on `stkf`)>>
+        full_simp_tac(srw_ss())[s_frame_key_eq_def]>>
+        full_simp_tac(srw_ss())[state_component_equality] )>>
+      CONJ_ASM1_TAC >- metis_tac[s_key_eq_length]>>
+      `s_key_eq x''.stack s.stack` by metis_tac[s_key_eq_sym]>>
+      IMP_RES_TAC s_key_eq_LASTN_exists>>
+      full_simp_tac(srw_ss())[]>>
+      (*check*)
+      qexists_tac`lss`>>full_simp_tac(srw_ss())[]>>
+      CONJ_TAC>-
+        metis_tac[s_key_eq_trans]
       >>
-      (
-      ntac 2 strip_tac>>
+      rpt strip_tac>>full_simp_tac(srw_ss())[]>>
       `!a. s_val_eq (a::s.stack) (a::xs)` by
        (strip_tac>> full_simp_tac(srw_ss())[s_val_eq_def]>>Cases_on`a`>>
-        Cases_on`o0`>>full_simp_tac(srw_ss())[s_frame_val_eq_def])>>
+        Cases_on`o'`>>Cases_on`o0`>>full_simp_tac(srw_ss())[s_frame_val_eq_def])>>
       Cases_on`handler`>>
-      TRY(rename1 `r.handler = (push_env _ (SOME stkf) s).handler` >> PairCases_on`stkf`)>>
+      TRY (rename1 `(push_env _ (SOME excp'') s).stack ` >> PairCases_on `excp''`)>>
       full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
-      qpat_abbrev_tac `frame = StackFrame lsz ls n`>>
+      qpat_abbrev_tac `frame = StackFrame SS _ A B`>>
       first_x_assum (qspec_then `frame` assume_tac)>>
       drule s_val_eq_stack_size >> strip_tac >> fs [] >>
       last_x_assum(qspec_then `frame::xs` assume_tac)>>
@@ -1837,202 +1789,245 @@ Proof
                             s_frame_val_and_key_eq,s_val_eq_def]>>
       Cases_on`h'`>>Cases_on`o0`>>
       full_simp_tac(srw_ss())[Abbr`frame`,s_frame_key_eq_def]>>
-      TRY (rename1 `h = StackFrame _ _ (SOME excp')` >> Cases_on `excp'`) >>
+      TRY(rename1 `r.stack = StackFrame _ _ _ (SOME stkf)::t'` >> PairCases_on`stkf`)>>
       full_simp_tac(srw_ss())[state_component_equality]>>
       IMP_RES_TAC s_val_eq_tail>>
-      first_x_assum(qspec_then `t` assume_tac)>> rev_full_simp_tac(srw_ss())[]
+      first_x_assum(qspec_then `t` assume_tac)>> rev_full_simp_tac(srw_ss())[]>>
+      IMP_RES_TAC s_key_eq_LASTN_exists>>
+      first_x_assum(qspecl_then[`e'''''`,`ls'''''`] assume_tac)>>rev_full_simp_tac(srw_ss())[]
       >-
-        (`x'' with <|locals := insert x'0 w0 x''.locals; stack := t|> =
-         r with <|locals := insert x'0 w0 x''.locals; locals_size := x''.locals_size;
-                   stack := t|>` by
-        full_simp_tac(srw_ss())[state_component_equality]>>
-        full_simp_tac(srw_ss())[])
+        (`x'' with <|locals := alist_insert x'0 l x''.locals; stack := t|> =
+         r with <|locals := alist_insert x'0 l x''.locals; locals_size := x''.locals_size; stack := t|>` by
+           full_simp_tac(srw_ss())[state_component_equality]>>
+        full_simp_tac(srw_ss())[PULL_EXISTS]>>
+        HINT_EXISTS_TAC>>full_simp_tac(srw_ss())[]>>
+        qexists_tac`lss'`>>full_simp_tac(srw_ss())[]>>
+        metis_tac[s_key_eq_trans])
       >>
-        (
-        `x'' with <|locals := insert x'0 w0 x''.locals; stack := t|> =
-        r with <|locals := insert x'0 w0 x''.locals; locals_size := x''.locals_size;
-                 stack := t; handler:=x''.handler|>` by
+        (`x'' with <|locals := alist_insert x'0 l x''.locals; stack := t|> =
+        r with <|locals := alist_insert x'0 l x''.locals; locals_size := x''.locals_size; stack := t; handler:=stkf0|>` by
           full_simp_tac(srw_ss())[state_component_equality]>>
-        pop_assum SUBST_ALL_TAC>>
-        srw_tac[][]>>
-        metis_tac[state_component_equality,EQ_SYM_EQ,s_key_eq_trans])))
-     >-
-     (*Exception*)
-     (Cases_on`handler` >> fs []
-      >-
-       (*no handler*)
-       (fs [call_env_def,flush_state_def,push_env_def,env_to_list_def,dec_clock_def,LET_THM]>>
-       CONJ_ASM1_TAC
-       >-
-       (IMP_RES_TAC prim_recTheory.LESS_LEMMA1>>
-       qpat_x_assum `LASTN a as=b` mp_tac>>simp[]>>
-       qpat_abbrev_tac `frame = StackFrame lsz a b`>>
-       `LENGTH s.stack+1 = LENGTH (frame::s.stack) ` by full_simp_tac(srw_ss())[arithmeticTheory.ADD1]>>
-       pop_assum SUBST1_TAC>> fs [LASTN_LENGTH_ID]>>
-       Q.UNABBREV_TAC`frame`>>fs[option_nchotomy]) >>
-       fs[GEN_ALL LASTN_TL]>>
-       Q.EXISTS_TAC`lss`>>full_simp_tac(srw_ss())[]>>rpt strip_tac>>
-       assume_tac get_vars_stack_swap_simp>>
-       first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
-       qpat_abbrev_tac `frame = StackFrame lsz a b`>>
-       `s.handler < LENGTH xs` by (IMP_RES_TAC s_val_eq_length>>full_simp_tac(srw_ss())[])>>
-       first_x_assum(qspecl_then [`frame::xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
-       IMP_RES_TAC (GEN_ALL LASTN_TL)>>
-       last_x_assum(qspec_then `frame` assume_tac)>>
-       full_simp_tac(srw_ss())[]>> rev_full_simp_tac(srw_ss())[]>>
-       `s_val_eq (frame::s.stack) (frame::xs)` by
-         metis_tac[s_val_eq_def,s_frame_val_eq_def] >>
-       drule s_val_eq_stack_size >> strip_tac >> fs []>>
-       HINT_EXISTS_TAC >>
-       Q.EXISTS_TAC`fromAList lss'`>> fs[state_component_equality]>>
-       Q.EXISTS_TAC`lss'`>> fs []) >>
-       (*handler*)
-       PairCases_on`x''`>>
-       fs [call_env_def,flush_state_def,push_env_def,dec_clock_def,LET_THM,env_to_list_def]>>
-       every_case_tac>>rfs[set_var_def]>>fs[]>>
-       `r.handler = s.handler` by
-       (`LENGTH s.stack +1 =
-        LENGTH (StackFrame s.locals_size (list_rearrange (s.permute 0)
-           (QSORT key_val_compare (toAList x')))
-           (SOME (s.handler,x''2,x''3))::s.stack)` by fs [arithmeticTheory.ADD1]>>
-         pop_assum SUBST_ALL_TAC>>
-         fs [LASTN_LENGTH_ID]>> Cases_on `n` >> fs [] >> rveq >>
-         metis_tac[s_key_eq_trans,s_key_eq_sym])>>
-       TRY
-         (qho_match_abbrev_tac`A ∧ B /\ C` >> unabbrev_all_tac>>
-         (ONCE_REWRITE_TAC[CONJ_ASSOC]>>CONJ_TAC
-         >-
-         (`LENGTH s.stack +1 =
-           LENGTH (StackFrame s.locals_size (list_rearrange (s.permute 0)
-           (QSORT key_val_compare (toAList x')))
-           (SOME (s.handler,x''2,x''3))::s.stack)` by full_simp_tac(srw_ss())[arithmeticTheory.ADD1]>>
-         pop_assum SUBST_ALL_TAC>>
-         full_simp_tac(srw_ss())[LASTN_LENGTH_ID]>>
-         metis_tac[s_key_eq_trans,s_key_eq_sym])>>
-         rpt strip_tac>>
-         assume_tac get_vars_stack_swap_simp>>
-         first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
-         qpat_abbrev_tac`frame = StackFrame lsz c d`>>
-         `s_val_eq (frame::s.stack) (frame::xs)` by
-           metis_tac[s_val_eq_def,s_frame_val_eq_def]>>
-         drule s_val_eq_stack_size >> strip_tac >> fs [] >>
-         IMP_RES_TAC s_val_eq_LASTN_exists>>
-         `LENGTH s.stack = LENGTH xs` by full_simp_tac(srw_ss())[s_val_eq_length] >>
-         first_x_assum(qspec_then`frame::xs` assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
-         first_x_assum(qspecl_then [`frame::xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
-         `LENGTH s.stack +1 = LENGTH (frame::s.stack) /\
-          LENGTH s.stack +1 = LENGTH (frame::xs)` by
-           full_simp_tac(srw_ss())[arithmeticTheory.ADD1,s_val_eq_length]>>
-          full_simp_tac(srw_ss())[LASTN_LENGTH_cond]>>
-          `MAP FST lss = MAP FST lss'` by metis_tac[EQ_SYM_EQ]>>
-          `lss = lss'` by full_simp_tac(srw_ss())[LIST_EQ_MAP_PAIR]>>
-          full_simp_tac(srw_ss())[]>>
-          last_x_assum(qspec_then `st` assume_tac)>>
-          rev_full_simp_tac(srw_ss())[]>>HINT_EXISTS_TAC>>
-          metis_tac[s_key_eq_trans,handler_eq]))
-          >-
-          (CONJ_TAC >- (
-          `LENGTH s.stack +1 =
-           LENGTH (StackFrame s.locals_size (list_rearrange (s.permute 0)
-           (QSORT key_val_compare (toAList x')))
-           (SOME (s.handler,x''2,x''3))::s.stack)` by full_simp_tac(srw_ss())[arithmeticTheory.ADD1]>>
-           pop_assum SUBST_ALL_TAC>>
-           full_simp_tac(srw_ss())[LASTN_LENGTH_ID]>>
-           `LENGTH ls = LENGTH r.stack` by full_simp_tac(srw_ss())[s_key_eq_length] >>
-           full_simp_tac(srw_ss())[])>>
-           IMP_RES_TAC s_key_eq_LASTN_exists>>
-           Q.EXISTS_TAC`e''`>>
-           Q.EXISTS_TAC`n`>>
-           Q.EXISTS_TAC`ls''`>>
-           full_simp_tac(srw_ss())[]>>
-           Q.EXISTS_TAC`lss'`>>
-          (*check*)
-           CONJ_TAC>-
-           (`LENGTH s.stack +1 =
-             LENGTH (StackFrame s.locals_size (list_rearrange (s.permute 0)
-             (QSORT key_val_compare (toAList x')))
-             (SOME (s.handler,x''2,x''3))::s.stack)` by full_simp_tac(srw_ss())[arithmeticTheory.ADD1]>>
-           pop_assum SUBST_ALL_TAC>>
-           full_simp_tac(srw_ss())[LASTN_LENGTH_ID]>>
-           `LENGTH ls = LENGTH r.stack` by full_simp_tac(srw_ss())[s_key_eq_length]>>
-           full_simp_tac(srw_ss())[EQ_SYM_EQ])>>
-           full_simp_tac(srw_ss())[]>>
-           CONJ_TAC>- metis_tac[s_key_eq_trans]>>
-           rpt strip_tac>>
-           assume_tac get_vars_stack_swap_simp>>
-           first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
-           qpat_abbrev_tac`frame = StackFrame lsz c d`>>
-           `s_val_eq (frame::s.stack) (frame::xs)` by
-             metis_tac[s_val_eq_def,s_frame_val_eq_def]>>
-           drule s_val_eq_stack_size >> strip_tac >> fs [] >>
-           IMP_RES_TAC s_val_eq_LASTN_exists>>
-           pop_assum kall_tac>>
-           first_x_assum(qspec_then `frame::xs` assume_tac)>>
-           rev_full_simp_tac(srw_ss())[]>>
-           `LENGTH s.stack = LENGTH xs` by full_simp_tac(srw_ss())[s_val_eq_length] >>
-           first_x_assum(qspecl_then [`frame::xs`,`e''''`,`ls''''`] assume_tac)>>
-           rev_full_simp_tac(srw_ss())[]>>
-           `LENGTH s.stack +1 = LENGTH (frame::s.stack) /\
-            LENGTH s.stack +1 = LENGTH (frame::xs)` by
-             full_simp_tac(srw_ss())[arithmeticTheory.ADD1,s_val_eq_length]>>
-           full_simp_tac(srw_ss())[LASTN_LENGTH_cond]>>
-           `MAP FST lss = MAP FST lss''` by metis_tac[EQ_SYM_EQ]>>
-           `lss'' = lss` by full_simp_tac(srw_ss())[LIST_EQ_MAP_PAIR]>>
-           full_simp_tac(srw_ss())[]>>
-           IMP_RES_TAC s_key_eq_LASTN_exists>>
-           qpat_x_assum `LASTN _ _ = StackFrame _ _ _::_` mp_tac >>
-           rename [`LASTN _ st = StackFrame _ e5 _::ls5`]>> strip_tac >>
-           first_x_assum (qspecl_then [`st`,`e5`,`ls5`] assume_tac)>>
-           rev_full_simp_tac(srw_ss())[]>>
-           full_simp_tac(srw_ss())[handler_eq]>>
-           HINT_EXISTS_TAC>>Q.EXISTS_TAC`fromAList lss'''`>>
-           full_simp_tac(srw_ss())[handler_eq]>>
-           CONJ_TAC >-
-             metis_tac[handler_eq]>>
-           CONJ_TAC>-
-            (Q.EXISTS_TAC`lss'''`>>full_simp_tac(srw_ss())[])>>
-           metis_tac[s_key_eq_trans])>>
-          (*TimeOut*)
-           rpt strip_tac>>
-           assume_tac get_vars_stack_swap_simp>>
-           first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
-           qpat_abbrev_tac`frame = StackFrame lsz c d`>>
-           `s_val_eq (frame::s.stack) (frame::xs)` by
-             metis_tac[s_val_eq_def,s_frame_val_eq_def]>>
-           drule s_val_eq_stack_size >> strip_tac >> fs [] >>
-           IMP_RES_TAC s_val_eq_LASTN_exists>>
-           `LENGTH s.stack = LENGTH xs` by full_simp_tac(srw_ss())[s_val_eq_length] >>
-           first_x_assum(qspec_then`frame::xs` assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
-           first_x_assum(qspecl_then [`frame::xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
-           `LENGTH s.stack +1 = LENGTH (frame::s.stack) /\
-            LENGTH s.stack +1 = LENGTH (frame::xs)` by
-              full_simp_tac(srw_ss())[arithmeticTheory.ADD1,s_val_eq_length]>>
-            full_simp_tac(srw_ss())[LASTN_LENGTH_cond]>>
-            `MAP FST lss = MAP FST lss'` by metis_tac[EQ_SYM_EQ]>>
-            `lss = lss'` by full_simp_tac(srw_ss())[LIST_EQ_MAP_PAIR]>>
-            pop_assum (SUBST1_TAC o SYM)>>
-            full_simp_tac(srw_ss())[]>>
-            first_x_assum(qspec_then `st` assume_tac)>>
-            rev_full_simp_tac(srw_ss())[]>>
-            metis_tac[handler_eq])>>
-    (*Cleanup...*)
+        full_simp_tac(srw_ss())[PULL_EXISTS]>>
+        HINT_EXISTS_TAC>>full_simp_tac(srw_ss())[]>>
+        qexists_tac`lss'`>>full_simp_tac(srw_ss())[]>>
+        metis_tac[s_key_eq_trans]))
+    (*The rest*)
+    >>
+    (
     ntac 2 strip_tac>>
-    assume_tac get_vars_stack_swap_simp>>
-    first_x_assum(qspec_then `args` SUBST1_TAC)>>simp[]>>
     `!a. s_val_eq (a::s.stack) (a::xs)` by
-       (strip_tac >> fs [s_val_eq_def] >> Cases_on `a` >>
-        rename1 `StackFrame n vs excp` >> Cases_on `excp` >>
-        fs [s_frame_val_eq_def]) >>
-     Cases_on`handler`>> TRY(PairCases_on`x''`)>>
-     fs [push_env_def,LET_THM,env_to_list_def,dec_clock_def]>>
-     qpat_abbrev_tac `frame = StackFrame lsz ls n`>>
-     first_x_assum (qspec_then `frame` assume_tac)>>
-     first_x_assum(qspec_then `frame::xs` assume_tac)>>
-     drule s_val_eq_stack_size >> strip_tac >> fs [] >>
-     rfs [call_env_def,flush_state_def] >>
-     `LENGTH xs = LENGTH s.stack` by full_simp_tac(srw_ss())[s_val_eq_length]>> full_simp_tac(srw_ss())[]
+     (strip_tac>> full_simp_tac(srw_ss())[s_val_eq_def]>>Cases_on`a`>>
+      Cases_on`o0`>>full_simp_tac(srw_ss())[s_frame_val_eq_def])>>
+    Cases_on`handler`>>
+    TRY(rename1 `r.handler = (push_env _ (SOME stkf) s).handler` >> PairCases_on`stkf`)>>
+    full_simp_tac(srw_ss())[push_env_def,LET_THM,env_to_list_def]>>
+    qpat_abbrev_tac `frame = StackFrame lsz _ ls n`>>
+    first_x_assum (qspec_then `frame` assume_tac)>>
+    drule s_val_eq_stack_size >> strip_tac >> fs [] >>
+    last_x_assum(qspec_then `frame::xs` assume_tac)>>
+    rev_full_simp_tac(srw_ss())[]>>
+    `LENGTH xs = LENGTH s.stack` by full_simp_tac(srw_ss())[s_val_eq_length]>> full_simp_tac(srw_ss())[]>>
+    Cases_on`st`>>full_simp_tac(srw_ss())[s_key_eq_def]>>
+    Cases_on`r.stack`>>full_simp_tac(srw_ss())[pop_env_def,s_key_eq_def]>>
+    `h = h'` by metis_tac[s_frame_key_eq_sym,s_frame_key_eq_trans,
+                          s_frame_val_and_key_eq,s_val_eq_def]>>
+    Cases_on`h'`>>Cases_on`o0`>>
+    full_simp_tac(srw_ss())[Abbr`frame`,s_frame_key_eq_def]>>
+    TRY (rename1 `h = StackFrame _ _ _ (SOME excp')` >> Cases_on `excp'`) >>
+    full_simp_tac(srw_ss())[state_component_equality]>>
+    IMP_RES_TAC s_val_eq_tail>>
+    first_x_assum(qspec_then `t` assume_tac)>> rev_full_simp_tac(srw_ss())[]
+    >-
+      (`x'' with <|locals := alist_insert x'0 l x''.locals; stack := t|> =
+       r with <|locals := alist_insert x'0 l x''.locals; locals_size := x''.locals_size;
+                 stack := t|>` by
+      full_simp_tac(srw_ss())[state_component_equality]>>
+      full_simp_tac(srw_ss())[])
+    >>
+      (
+      `x'' with <|locals := alist_insert x'0 l x''.locals; stack := t|> =
+      r with <|locals := alist_insert x'0 l x''.locals; locals_size := x''.locals_size;
+               stack := t; handler:=x''.handler|>` by
+        full_simp_tac(srw_ss())[state_component_equality]>>
+      pop_assum SUBST_ALL_TAC>>
+      srw_tac[][]>>
+      metis_tac[state_component_equality,EQ_SYM_EQ,s_key_eq_trans])))
+  >- ( (*Exception*)
+    Cases_on`handler` >> fs []
+    >-
+      (*no handler*)
+      (fs [call_env_def,flush_state_def,push_env_def,env_to_list_def,dec_clock_def,LET_THM]>>
+      CONJ_ASM1_TAC
+      >-
+        (IMP_RES_TAC prim_recTheory.LESS_LEMMA1>>
+        qpat_x_assum `LASTN a as=b` mp_tac>>simp[]>>
+        qpat_abbrev_tac `frame = StackFrame lsz _ a b`>>
+        `LENGTH s.stack+1 = LENGTH (frame::s.stack) ` by full_simp_tac(srw_ss())[arithmeticTheory.ADD1]>>
+        pop_assum SUBST1_TAC>> fs [LASTN_LENGTH_ID]>>
+        Q.UNABBREV_TAC`frame`>>fs[option_nchotomy]) >>
+      fs[GEN_ALL LASTN_TL]>>
+      Q.EXISTS_TAC`lss`>>full_simp_tac(srw_ss())[]>>rpt strip_tac>>
+      assume_tac get_vars_stack_swap_simp>>
+      first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
+      qpat_abbrev_tac `frame = StackFrame lsz _ a b`>>
+      `s.handler < LENGTH xs` by (IMP_RES_TAC s_val_eq_length>>full_simp_tac(srw_ss())[])>>
+      first_x_assum(qspecl_then [`frame::xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
+      IMP_RES_TAC (GEN_ALL LASTN_TL)>>
+      last_x_assum(qspec_then `frame` assume_tac)>>
+      full_simp_tac(srw_ss())[]>> rev_full_simp_tac(srw_ss())[]>>
+      `s_val_eq (frame::s.stack) (frame::xs)` by
+        metis_tac[s_val_eq_def,s_frame_val_eq_def] >>
+      drule s_val_eq_stack_size >> strip_tac >> fs []>>
+      simp[state_component_equality]>>
+      metis_tac[])>>
+    (*handler*)
+    PairCases_on`x''`>>
+    fs [call_env_def,flush_state_def,push_env_def,dec_clock_def,LET_THM,env_to_list_def]>>
+    every_case_tac>>rfs[set_var_def]>>fs[]>>
+    `r.handler = s.handler` by
+      (`LENGTH s.stack +1 =
+       LENGTH (StackFrame s.locals_size (toAList (FST x')) (list_rearrange (s.permute 0)
+          (QSORT key_val_compare (toAList (SND x'))))
+          (SOME (s.handler,x''2,x''3))::s.stack)` by fs [arithmeticTheory.ADD1]>>
+        pop_assum SUBST_ALL_TAC>>
+        fs [LASTN_LENGTH_ID]>> Cases_on `n` >> fs [] >> rveq >>
+        metis_tac[s_key_eq_trans,s_key_eq_sym])>>
+    TRY
+      (qho_match_abbrev_tac`A ∧ B /\ C` >> unabbrev_all_tac>>
+      (ONCE_REWRITE_TAC[CONJ_ASSOC]>>CONJ_TAC
+      >-
+      (`LENGTH s.stack +1 =
+       LENGTH (StackFrame s.locals_size (toAList (FST x')) (list_rearrange (s.permute 0)
+          (QSORT key_val_compare (toAList (SND x'))))
+          (SOME (s.handler,x''2,x''3))::s.stack)` by fs [arithmeticTheory.ADD1]>>
+      pop_assum SUBST_ALL_TAC>>
+      full_simp_tac(srw_ss())[LASTN_LENGTH_ID]>>
+      metis_tac[s_key_eq_trans,s_key_eq_sym])>>
+      rpt strip_tac>>
+      assume_tac get_vars_stack_swap_simp>>
+      first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
+      qpat_abbrev_tac`frame = StackFrame lsz _ c d`>>
+      `s_val_eq (frame::s.stack) (frame::xs)` by
+        metis_tac[s_val_eq_def,s_frame_val_eq_def]>>
+      drule s_val_eq_stack_size >> strip_tac >> fs [] >>
+      IMP_RES_TAC s_val_eq_LASTN_exists>>
+      `LENGTH s.stack = LENGTH xs` by full_simp_tac(srw_ss())[s_val_eq_length] >>
+      first_x_assum(qspec_then`frame::xs` assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
+      first_x_assum(qspecl_then [`frame::xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
+      `LENGTH s.stack +1 = LENGTH (frame::s.stack) /\
+       LENGTH s.stack +1 = LENGTH (frame::xs)` by
+        full_simp_tac(srw_ss())[arithmeticTheory.ADD1,s_val_eq_length]>>
+       full_simp_tac(srw_ss())[LASTN_LENGTH_cond]>>
+       `MAP FST lss = MAP FST lss'` by metis_tac[EQ_SYM_EQ]>>
+       `lss = lss'` by full_simp_tac(srw_ss())[LIST_EQ_MAP_PAIR]>>
+       full_simp_tac(srw_ss())[]>>
+       last_x_assum(qspec_then `st` assume_tac)>>
+       rev_full_simp_tac(srw_ss())[]>>HINT_EXISTS_TAC>>
+       metis_tac[s_key_eq_trans,handler_eq]))
+     >-
+       (CONJ_TAC >- (
+         `LENGTH s.stack +1 =
+         LENGTH (StackFrame s.locals_size (toAList (FST x')) (list_rearrange (s.permute 0)
+            (QSORT key_val_compare (toAList (SND x'))))
+            (SOME (s.handler,x''2,x''3))::s.stack)` by fs [arithmeticTheory.ADD1]>>
+          pop_assum SUBST_ALL_TAC>>
+          full_simp_tac(srw_ss())[LASTN_LENGTH_ID]>>
+          `LENGTH ls = LENGTH r.stack` by full_simp_tac(srw_ss())[s_key_eq_length] >>
+          full_simp_tac(srw_ss())[])>>
+        IMP_RES_TAC s_key_eq_LASTN_exists>>
+        Q.EXISTS_TAC`e0'`>>
+        Q.EXISTS_TAC`e''`>>
+        Q.EXISTS_TAC`n'`>>
+        Q.EXISTS_TAC`ls''`>>
+        full_simp_tac(srw_ss())[]>>
+        Q.EXISTS_TAC`lss'`>>
+        (*check*)
+        CONJ_TAC>-
+          (`LENGTH s.stack +1 =
+           LENGTH (StackFrame s.locals_size (toAList (FST x')) (list_rearrange (s.permute 0)
+              (QSORT key_val_compare (toAList (SND x'))))
+              (SOME (s.handler,x''2,x''3))::s.stack)` by fs [arithmeticTheory.ADD1]>>
+          pop_assum SUBST_ALL_TAC>>
+          full_simp_tac(srw_ss())[LASTN_LENGTH_ID]>>
+          `LENGTH ls = LENGTH r.stack` by full_simp_tac(srw_ss())[s_key_eq_length]>>
+          full_simp_tac(srw_ss())[EQ_SYM_EQ])>>
+        full_simp_tac(srw_ss())[]>>
+        CONJ_TAC>- metis_tac[s_key_eq_trans]>>
+        rpt strip_tac>>
+        assume_tac get_vars_stack_swap_simp>>
+        first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
+        qpat_abbrev_tac`frame = StackFrame lsz _ c d`>>
+        `s_val_eq (frame::s.stack) (frame::xs)` by
+          metis_tac[s_val_eq_def,s_frame_val_eq_def]>>
+        drule s_val_eq_stack_size >> strip_tac >> fs [] >>
+        IMP_RES_TAC s_val_eq_LASTN_exists>>
+        pop_assum kall_tac>>
+        first_x_assum(qspec_then `frame::xs` assume_tac)>>
+        rev_full_simp_tac(srw_ss())[]>>
+        `LENGTH s.stack = LENGTH xs` by full_simp_tac(srw_ss())[s_val_eq_length] >>
+        first_x_assum(qspecl_then [`frame::xs`,`e'''''`,`ls'''''`] assume_tac)>>
+        rev_full_simp_tac(srw_ss())[]>>
+        `LENGTH s.stack +1 = LENGTH (frame::s.stack) /\
+         LENGTH s.stack +1 = LENGTH (frame::xs)` by
+          full_simp_tac(srw_ss())[arithmeticTheory.ADD1,s_val_eq_length]>>
+        full_simp_tac(srw_ss())[LASTN_LENGTH_cond]>>
+        `MAP FST lss = MAP FST lss''` by metis_tac[EQ_SYM_EQ]>>
+        `lss'' = lss` by full_simp_tac(srw_ss())[LIST_EQ_MAP_PAIR]>>
+        full_simp_tac(srw_ss())[]>>
+        IMP_RES_TAC s_key_eq_LASTN_exists>>
+        qpat_x_assum `LASTN _ _ = StackFrame _ _ _ _::_` mp_tac >>
+        rename [`LASTN _ st = StackFrame _ _ e5 _::ls5`]>> strip_tac >>
+        first_x_assum (qspecl_then [`st`,`e5`,`ls5`] assume_tac)>>
+        rev_full_simp_tac(srw_ss())[]>>
+        full_simp_tac(srw_ss())[handler_eq]>>
+        HINT_EXISTS_TAC>>
+        Q.EXISTS_TAC`union (fromAList e0') (fromAList lss''')`>>
+        full_simp_tac(srw_ss())[handler_eq]>>
+        CONJ_TAC >-
+          metis_tac[handler_eq]>>
+        CONJ_TAC>-
+         (Q.EXISTS_TAC`lss'''`>>full_simp_tac(srw_ss())[])>>
+        metis_tac[s_key_eq_trans])>>
+      (*TimeOut*)
+      rpt strip_tac>>
+      assume_tac get_vars_stack_swap_simp>>
+      first_x_assum(qspec_then `args` assume_tac)>>full_simp_tac(srw_ss())[]>>
+      qpat_abbrev_tac`frame = StackFrame lsz _ c d`>>
+      `s_val_eq (frame::s.stack) (frame::xs)` by
+        metis_tac[s_val_eq_def,s_frame_val_eq_def]>>
+      drule s_val_eq_stack_size >> strip_tac >> fs [] >>
+      IMP_RES_TAC s_val_eq_LASTN_exists>>
+      `LENGTH s.stack = LENGTH xs` by full_simp_tac(srw_ss())[s_val_eq_length] >>
+      first_x_assum(qspec_then`frame::xs` assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
+      first_x_assum(qspecl_then [`frame::xs`,`e'`,`ls'`] assume_tac)>>rev_full_simp_tac(srw_ss())[]>>
+      `LENGTH s.stack +1 = LENGTH (frame::s.stack) /\
+       LENGTH s.stack +1 = LENGTH (frame::xs)` by
+         full_simp_tac(srw_ss())[arithmeticTheory.ADD1,s_val_eq_length]>>
+      full_simp_tac(srw_ss())[LASTN_LENGTH_cond]>>
+      `MAP FST lss = MAP FST lss'` by metis_tac[EQ_SYM_EQ]>>
+      `lss = lss'` by full_simp_tac(srw_ss())[LIST_EQ_MAP_PAIR]>>
+      pop_assum (SUBST1_TAC o SYM)>>
+      fs[]>>
+      first_x_assum(qspec_then `st` assume_tac)>>
+      rev_full_simp_tac(srw_ss())[]>>
+      metis_tac[handler_eq])>>
+  (*Cleanup...*)
+  ntac 2 strip_tac>>
+  assume_tac get_vars_stack_swap_simp>>
+  first_x_assum(qspec_then `args` SUBST1_TAC)>>simp[]>>
+  `!a. s_val_eq (a::s.stack) (a::xs)` by
+     (strip_tac >> fs [s_val_eq_def] >> Cases_on `a` >>
+      rename1 `StackFrame n _ vs excp` >> Cases_on `excp` >>
+      fs [s_frame_val_eq_def]) >>
+   Cases_on`handler`>> TRY(PairCases_on`x''`)>>
+   fs [push_env_def,LET_THM,env_to_list_def,dec_clock_def]>>
+   qpat_abbrev_tac `frame = StackFrame lsz _ ls n`>>
+   first_x_assum (qspec_then `frame` assume_tac)>>
+   first_x_assum(qspec_then `frame::xs` assume_tac)>>
+   drule s_val_eq_stack_size >> strip_tac >> fs [] >>
+   rfs [call_env_def,flush_state_def] >>
+   `LENGTH xs = LENGTH s.stack` by full_simp_tac(srw_ss())[s_val_eq_length]>> full_simp_tac(srw_ss())[]
 QED
-
 
 (*--Stack Swap Lemma DONE--*)
 
@@ -2162,7 +2157,7 @@ val jump_exc_perm = Q.prove(`
 (*For any target result permute, we can find an initial permute such that the
   final permute is equal to the target *)
 Theorem permute_swap_lemma:
-    ∀prog st perm.
+  ∀prog st perm.
   let (res,rst) = evaluate(prog,st) in
     res ≠ SOME Error  (*Note: actually provable without this assum, but this is simpler*)
     ⇒
@@ -2298,12 +2293,12 @@ Proof
       rename1 `evaluate _ = (SOME rtemp, r)` >>
       Cases_on`rtemp`>>full_simp_tac(srw_ss())[]
       >-
-       (qpat_x_assum`A=(res,rst)` mp_tac>>
+        (qpat_x_assum`A=(res,rst)` mp_tac>>
         IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
         full_case_tac>>full_simp_tac(srw_ss())[]>>
         IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
-        rename1 `evaluate (prog,set_var ntmp vtmp stmp)` >>
-        Cases_on `evaluate (prog,set_var ntmp vtmp stmp)` >>
+        rename1 `evaluate (prog,set_vars ntmp vtmp stmp)` >>
+        Cases_on `evaluate (prog,set_vars ntmp vtmp stmp)` >>
         rename1 `(prog', prgst )= (res,rst)` >>
         Cases_on`prog'` >>
         TRY(rename1 `(SOME restmp,prgst) = (res,rst)` >> Cases_on`restmp`)>>
@@ -3218,24 +3213,22 @@ Theorem push_call_option_le_stack_max_preserved:
        (call_env args sz (push_env env handler s)).locals_size)
    (call_env args sz  (push_env env handler s)).stack_max
 Proof
-
-rw [call_env_def] >>
-     Cases_on `handler` >> fs [push_env_def, state_fn_updates]
-     >- (
-       pairarg_tac >> fs [] >>
-       qpat_abbrev_tac `sts = stack_size _` >>
-       Cases_on `sts` >- fs [OPTION_MAP2_DEF] >>
-       Cases_on `s.stack_max` >-fs [OPTION_MAP2_DEF]>>
-       `1 <= x` by (match_mp_tac stack_size_some_at_least_one >> unabbrev_all_tac >> metis_tac []) >>
-       fs [OPTION_MAP2_DEF] >> every_case_tac >> fs []) >>
-     Cases_on `x` >> Cases_on `r` >>  Cases_on `r'` >> fs [push_env_def, state_fn_updates] >>
-     pairarg_tac >> fs [] >>
-     qpat_abbrev_tac `sts = stack_size _` >>
-     Cases_on `sts` >- fs [OPTION_MAP2_DEF] >>
-     Cases_on `s.stack_max` >-fs [OPTION_MAP2_DEF]>>
-     `1 <= x` by (match_mp_tac stack_size_some_at_least_one >> unabbrev_all_tac >> metis_tac []) >>
-     fs [OPTION_MAP2_DEF] >> every_case_tac >> fs []
-
+  rw [call_env_def] >>
+  Cases_on `handler` >> fs [push_env_def, state_fn_updates]
+  >- (
+    pairarg_tac >> fs [] >>
+    qpat_abbrev_tac `sts = stack_size _` >>
+    Cases_on `sts` >- fs [OPTION_MAP2_DEF] >>
+    Cases_on `s.stack_max` >-fs [OPTION_MAP2_DEF]>>
+    `1 <= x` by (match_mp_tac stack_size_some_at_least_one >> unabbrev_all_tac >> metis_tac []) >>
+    fs [OPTION_MAP2_DEF] >> every_case_tac >> fs []) >>
+  Cases_on `x` >> Cases_on `r` >>  Cases_on `r'` >> fs [push_env_def, state_fn_updates] >>
+  pairarg_tac >> fs [] >>
+  qpat_abbrev_tac `sts = stack_size _` >>
+  Cases_on `sts` >- fs [OPTION_MAP2_DEF] >>
+  Cases_on `s.stack_max` >-fs [OPTION_MAP2_DEF]>>
+  `1 <= x` by (match_mp_tac stack_size_some_at_least_one >> unabbrev_all_tac >> metis_tac []) >>
+  fs [OPTION_MAP2_DEF] >> every_case_tac >> fs []
 QED
 
 
