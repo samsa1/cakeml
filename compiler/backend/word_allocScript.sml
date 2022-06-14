@@ -1,5 +1,5 @@
 (*
-  This is the compiler's regsiter allocator. It supports different modes:
+  This is the compiler's register allocator. It supports different modes:
       0) simple allocator, no spill heuristics;
       1) simple allocator + spill heuristics;
       2) IRC allocator, no spill heuristics (default);
@@ -23,6 +23,11 @@ val _ = patternMatchesLib.ENABLE_PMATCH_CASES();
 val apply_nummap_key_def = Define`
   apply_nummap_key f names =
   fromAList (MAP (λx,y.f x,y) (toAList names))`
+
+val apply_nummaps_key_def = Define`
+  apply_nummaps_key f names =
+  (fromAList (MAP (λx,y.f x,y) (toAList (FST names))),
+   fromAList (MAP (λx,y.f x,y) (toAList (SND names))))`
 
 val option_lookup_def = Define`
   option_lookup t v = dtcase lookup v t of NONE => 0n | SOME x => x`
@@ -279,15 +284,16 @@ val ssa_cc_trans_def = Define`
     (If cmp r1' ri' (Seq e2' e2_cons) (Seq e3' e3_cons),ssa_fin,na_fin)) ∧
   (*For cutsets, we must restart the ssa mapping to maintain consistency*)
   (ssa_cc_trans (Alloc num numset) ssa na =
-    let ls = MAP FST (toAList numset) in
+    let all_names = union (FST numset) (SND numset) in
+    let ls = MAP FST (toAList all_names) in
     (*This trick allows us to not keep the "next stack" variable by
       simply starting from the next available stack location
       Assuming na is an alloc var of course..*)
     let (stack_mov,ssa',na') = list_next_var_rename_move ssa (na+2) ls in
     let num' = option_lookup ssa' num in
-    let stack_set = apply_nummap_key (option_lookup ssa') numset in
+    let stack_set = apply_nummaps_key (option_lookup ssa') numset in
     (*Restart the ssa map*)
-    let ssa_cut = inter ssa' numset in
+    let ssa_cut = inter ssa' all_names in
     let (ret_mov,ssa'',na'') =
       list_next_var_rename_move ssa_cut (na'+2) ls in
     let prog = (Seq (stack_mov)
@@ -302,11 +308,12 @@ val ssa_cc_trans_def = Define`
     let src' = option_lookup ssa src in
     let (dst',ssa',na') = next_var_rename dst ssa na in
       (OpCurrHeap b dst' src',ssa',na')) ∧
-  (ssa_cc_trans (Return num1 num2) ssa na=
-    let num1' = option_lookup ssa num1 in
-    let num2' = option_lookup ssa num2 in
-    let mov = Move 0 [(2,num2')] in
-    (Seq mov (Return num1' 2),ssa,na)) ∧
+  (ssa_cc_trans (Return num nums) ssa na=
+    let num' = option_lookup ssa num in
+    let nums' = MAP (option_lookup ssa) nums in
+    let rets = GENLIST (\x.2*(x+1)) (LENGTH nums') in
+    let mov = Move 0 (ZIP (rets,nums')) in
+    (Seq mov (Return num' rets),ssa,na)) ∧
   (ssa_cc_trans Tick ssa na = (Tick,ssa,na)) ∧
   (ssa_cc_trans (Set n exp) ssa na =
     let exp' = ssa_cc_trans_exp ssa exp in
@@ -315,14 +322,15 @@ val ssa_cc_trans_def = Define`
     let (r',ssa',na') = next_var_rename r ssa na in
       (LocValue r' l1,ssa',na')) ∧
   (ssa_cc_trans (Install ptr len dptr dlen numset) ssa na =
-    let ls = MAP FST (toAList numset) in
+    let all_names = union (FST numset) (SND numset) in
+    let ls = MAP FST (toAList all_names) in
     let (stack_mov,ssa',na') = list_next_var_rename_move ssa (na+2) ls in
-    let stack_set = apply_nummap_key (option_lookup ssa') numset in
+    let stack_set = apply_nummaps_key (option_lookup ssa') numset in
     let ptr' = option_lookup ssa' ptr in
     let len' = option_lookup ssa' len in
     let dptr' = option_lookup ssa' dptr in
     let dlen' = option_lookup ssa' dlen in
-    let ssa_cut = inter ssa' numset in
+    let ssa_cut = inter ssa' all_names in
     let (ptr'',ssa'',na'') = next_var_rename ptr ssa_cut (na'+2) in
     let (ret_mov,ssa''',na''') =
       list_next_var_rename_move ssa'' na'' ls in
@@ -340,14 +348,15 @@ val ssa_cc_trans_def = Define`
     let r2' = option_lookup ssa r2 in
     (DataBufferWrite r1' r2',ssa,na)) ∧
   (ssa_cc_trans (FFI ffi_index ptr1 len1 ptr2 len2 numset) ssa na =
-    let ls = MAP FST (toAList numset) in
+    let all_names = union (FST numset) (SND numset) in
+    let ls = MAP FST (toAList all_names) in
     let (stack_mov,ssa',na') = list_next_var_rename_move ssa (na+2) ls in
-    let stack_set = apply_nummap_key (option_lookup ssa') numset in
+    let stack_set = apply_nummaps_key (option_lookup ssa') numset in
     let cptr1 = option_lookup ssa' ptr1 in
     let clen1 = option_lookup ssa' len1 in
     let cptr2 = option_lookup ssa' ptr2 in
     let clen2 = option_lookup ssa' len2 in
-    let ssa_cut = inter ssa' numset in
+    let ssa_cut = inter ssa' all_names in
     let (ret_mov,ssa'',na'') =
       list_next_var_rename_move ssa_cut (na'+2) ls in
     let prog = (Seq (stack_mov)
@@ -361,27 +370,29 @@ val ssa_cc_trans_def = Define`
     let prog = Seq move_args (Call NONE dest conv_args h) in
       (prog,ssa,na)) ∧
   (ssa_cc_trans (Call (SOME(ret,numset,ret_handler,l1,l2)) dest args h) ssa na =
-    let ls = MAP FST (toAList numset) in
+    let all_names = union (FST numset) (SND numset) in
+    let ls = MAP FST (toAList all_names) in
     let (stack_mov,ssa',na') = list_next_var_rename_move ssa (na+2) ls in
-    let stack_set = apply_nummap_key (option_lookup ssa') numset in
+    let stack_set = apply_nummaps_key (option_lookup ssa') numset in
     let names = MAP (option_lookup ssa) args in
     let conv_args = GENLIST (\x.2*(x+1)) (LENGTH names) in
     let move_args = (Move 0 (ZIP (conv_args,names))) in
-    let ssa_cut = inter ssa' numset in
+    let ssa_cut = inter ssa' all_names in
     let (ret_mov,ssa'',na'') =
       list_next_var_rename_move ssa_cut (na'+2) ls in
     (*ret_mov restores the cutset*)
     (*This recurses on the returning handler*)
-    let (ret',ssa_2_p,na_2_p) = next_var_rename ret ssa'' na'' in
+    let (ret',ssa_2_p,na_2_p) = list_next_var_rename ret ssa'' na'' in
     let (ren_ret_handler,ssa_2,na_2) =
       ssa_cc_trans ret_handler ssa_2_p na_2_p in
+    let regs = GENLIST (\x.2*(x+1)) (LENGTH ret) in
     let mov_ret_handler =
-        (Seq ret_mov (Seq (Move 0 [ret',2]) (ren_ret_handler))) in
+        (Seq ret_mov (Seq (Move 0 (ZIP(ret',regs))) (ren_ret_handler))) in
     (dtcase h of
       NONE =>
         let prog =
           (Seq stack_mov (Seq move_args
-          (Call (SOME(2,stack_set,mov_ret_handler,l1,l2))
+          (Call (SOME(regs,stack_set,mov_ret_handler,l1,l2))
                 dest conv_args NONE))) in
         (prog,ssa_2,na_2)
     | SOME(n,h,l1',l2') =>
@@ -396,7 +407,7 @@ val ssa_cc_trans_def = Define`
         let cons_exc_handler = Seq mov_exc_handler exc_cons in
         let prog =
             (Seq stack_mov (Seq move_args
-            (Call (SOME(2,stack_set,cons_ret_handler,l1,l2))
+            (Call (SOME(regs,stack_set,cons_ret_handler,l1,l2))
                dest conv_args (SOME(2,cons_exc_handler,l1',l2'))))) in
         (prog,ssa_fin,na_fin)))`
 
@@ -461,8 +472,8 @@ val apply_colour_def = Define `
   (apply_colour f (Store exp num) = Store (apply_colour_exp f exp) (f num)) ∧
   (apply_colour f (Call ret dest args h) =
     let ret = dtcase ret of NONE => NONE
-                        | SOME (v,cutset,ret_handler,l1,l2) =>
-                          SOME (f v,apply_nummap_key f cutset,apply_colour f ret_handler,l1,l2) in
+                        | SOME (vs,cutset,ret_handler,l1,l2) =>
+                          SOME (MAP f vs,apply_nummaps_key f cutset,apply_colour f ret_handler,l1,l2) in
     let args = MAP f args in
     let h = dtcase h of NONE => NONE
                      | SOME (v,prog,l1,l2) => SOME (f v, apply_colour f prog,l1,l2) in
@@ -472,25 +483,26 @@ val apply_colour_def = Define `
   (apply_colour f (If cmp r1 ri e2 e3) =
     If cmp (f r1) (apply_colour_imm f ri) (apply_colour f e2) (apply_colour f e3)) ∧
   (apply_colour f (Install r1 r2 r3 r4 numset) =
-    Install (f r1) (f r2) (f r3) (f r4) (apply_nummap_key f numset)) ∧
+    Install (f r1) (f r2) (f r3) (f r4) (apply_nummaps_key f numset)) ∧
   (apply_colour f (CodeBufferWrite r1 r2) =
     CodeBufferWrite (f r1) (f r2)) ∧
   (apply_colour f (DataBufferWrite r1 r2) =
     DataBufferWrite (f r1) (f r2)) ∧
   (apply_colour f (FFI ffi_index ptr1 len1 ptr2 len2 numset) =
-    FFI ffi_index (f ptr1) (f len1) (f ptr2) (f len2) (apply_nummap_key f numset)) ∧
+    FFI ffi_index (f ptr1) (f len1) (f ptr2) (f len2) (apply_nummaps_key f numset)) ∧
   (apply_colour f (LocValue r l1) =
     LocValue (f r) l1) ∧
   (apply_colour f (Alloc num numset) =
-    Alloc (f num) (apply_nummap_key f numset)) ∧
+    Alloc (f num) (apply_nummaps_key f numset)) ∧
   (apply_colour f (Raise num) = Raise (f num)) ∧
-  (apply_colour f (Return num1 num2) = Return (f num1) (f num2)) ∧
+  (apply_colour f (Return num1 nums) = Return (f num1) (MAP f nums)) ∧
   (apply_colour f Tick = Tick) ∧
   (apply_colour f (Set n exp) = Set n (apply_colour_exp f exp)) ∧
   (apply_colour f (OpCurrHeap b n1 n2) = OpCurrHeap b (f n1) (f n2)) ∧
   (apply_colour f p = p )`
 
-val _ = export_rewrites ["apply_nummap_key_def","apply_colour_exp_def"
+val _ = export_rewrites ["apply_nummap_key_def","apply_nummaps_key_def"
+                        ,"apply_colour_exp_def"
                         ,"apply_colour_inst_def","apply_colour_def"
                         ,"apply_colour_imm_def"];
 
@@ -612,18 +624,18 @@ val get_live_def = Define`
     let union_live = union e2_live e3_live in
        dtcase ri of Reg r2 => insert r2 () (insert r1 () union_live)
       | _ => insert r1 () union_live) ∧
-  (get_live (Alloc num numset) live = insert num () numset) ∧
+  (get_live (Alloc num numset) live = insert num () (union (SND numset) (FST numset))) ∧
   (get_live (Install r1 r2 r3 r4 numset) live =
-    list_insert [r1;r2;r3;r4] numset) ∧
+    list_insert [r1;r2;r3;r4] (union (SND numset) (FST numset))) ∧
   (get_live (CodeBufferWrite r1 r2) live =
     list_insert [r1;r2] live) ∧
   (get_live (DataBufferWrite r1 r2) live =
     list_insert [r1;r2] live) ∧
   (get_live (FFI ffi_index ptr1 len1 ptr2 len2 numset) live =
    insert ptr1 () (insert len1 ()
-     (insert ptr2 () (insert len2 () numset)))) ∧
+     (insert ptr2 () (insert len2 () (union (SND numset) (FST numset)))))) ∧
   (get_live (Raise num) live = insert num () live) ∧
-  (get_live (Return num1 num2) live = insert num1 () (insert num2 () live)) ∧
+  (get_live (Return num1 nums) live = insert num1 () (numset_list_insert nums live)) ∧
   (get_live Tick live = live) ∧
   (get_live (LocValue r l1) live = delete r live) ∧
   (get_live (Set n exp) live = union (get_live_exp exp) live) ∧
@@ -635,7 +647,7 @@ val get_live_def = Define`
   *)
   (get_live (Call NONE dest args h) live = numset_list_insert args LN) ∧
   (get_live (Call (SOME(_,cutset,_)) dest args h) live =
-    union cutset (numset_list_insert args LN))`
+    union (union (SND cutset) (FST cutset)) (numset_list_insert args LN))`
 
 (* Dead instruction removal *)
 val remove_dead_inst_def = Define`
@@ -725,7 +737,7 @@ val remove_dead_def = Define`
   (remove_dead (Call(SOME(v,cutset,ret_handler,l1,l2))dest args h) live =
     (*top level*)
     let args_set = numset_list_insert args LN in
-    let live_set = union cutset args_set in
+    let live_set = union (union (SND cutset) (FST cutset)) args_set in
     let (ret_handler,_) = remove_dead ret_handler live in
     let h =
       (dtcase h of
@@ -784,15 +796,16 @@ val get_clash_sets_def = Define`
     let args_set = numset_list_insert args LN in
     let (hd,ls) = get_clash_sets ret_handler live in
     (*Outer liveset*)
-    let live_set = union cutset args_set in
+    let ucut = (union (SND cutset) (FST cutset)) in
+    let live_set = union ucut args_set in
     (*Returning clash set*)
-    let ret_clash = insert v () cutset in
+    let ret_clash = numset_list_insert v ucut in
     (dtcase h of
       NONE => (live_set,ret_clash::hd::ls)
     | SOME(v',prog,l1,l2) =>
         let (hd',ls') = get_clash_sets prog live in
         (*Handler clash set*)
-        let h_clash = insert v' () cutset in
+        let h_clash = insert v' () ucut in
         (live_set,h_clash::ret_clash::hd::hd'::ls++ls'))) ∧
   (*Catchall for cases where we dont have in sub programs live sets*)
   (get_clash_sets prog live =
@@ -861,17 +874,17 @@ val get_clash_tree_def = Define`
   (get_clash_tree (MustTerminate s) =
     get_clash_tree s) ∧
   (get_clash_tree (Alloc num numset) =
-    Seq (Delta [] [num]) (Set numset)) ∧
+    Seq (Delta [] [num]) (Set (union (SND numset) (FST numset)))) ∧
   (get_clash_tree (Install r1 r2 r3 r4 numset) =
-    Seq (Delta [] [r4;r3;r2;r1]) (Seq (Set numset) (Delta [r1] []))) ∧
+    Seq (Delta [] [r4;r3;r2;r1]) (Seq (Set (union (SND numset) (FST numset))) (Delta [r1] []))) ∧
   (get_clash_tree (CodeBufferWrite r1 r2) =
     Delta [] [r2;r1]) ∧
   (get_clash_tree (DataBufferWrite r1 r2) =
     Delta [] [r2;r1]) ∧
   (get_clash_tree (FFI ffi_index ptr1 len1 ptr2 len2 numset) =
-    Seq (Delta [] [ptr1;len1;ptr2;len2]) (Set numset)) ∧
+    Seq (Delta [] [ptr1;len1;ptr2;len2]) (Set (union (SND numset) (FST numset)))) ∧
   (get_clash_tree (Raise num) = Delta [] [num]) ∧
-  (get_clash_tree (Return num1 num2) = Delta [] [num1;num2]) ∧
+  (get_clash_tree (Return num1 nums) = Delta [] (num1::nums)) ∧
   (get_clash_tree Tick = Delta [] []) ∧
   (get_clash_tree (LocValue r l1) = Delta [r] []) ∧
   (get_clash_tree (Set n exp) = Delta [] (get_reads_exp exp)) ∧
@@ -880,17 +893,18 @@ val get_clash_tree_def = Define`
     let args_set = numset_list_insert args LN in
     dtcase ret of
       NONE => Set (numset_list_insert args LN)
-    | SOME (v,cutset,ret_handler,_,_) =>
-      let live_set = union cutset args_set in
+    | SOME (vs,cutset,ret_handler,_,_) =>
+      let ucut = (union (SND cutset) (FST cutset)) in
+      let live_set = union ucut args_set in
       (*Might be inefficient..*)
-      let ret_tree = Seq (Set (insert v () cutset)) (get_clash_tree ret_handler) in
+      let ret_tree = Seq (Set (numset_list_insert vs ucut)) (get_clash_tree ret_handler) in
       dtcase h of
         NONE => Seq (Set live_set) ret_tree
       | SOME (v',prog,_,_) =>
         let handler_tree =
-          (*They will actually always be equal if call_arg_conv is met*)
-          if v = v' then get_clash_tree prog
-          else Seq (Set (insert v' () cutset)) (get_clash_tree prog) in
+          (* They will actually always be equal if call_arg_conv is met *)
+          (* old optimization:  if v = v' then get_clash_tree prog *)
+          Seq (Set (insert v' () ucut)) (get_clash_tree prog) in
         Branch (SOME live_set) ret_tree handler_tree)`
 
 (* Preference edges
