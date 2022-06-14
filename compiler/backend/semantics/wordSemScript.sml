@@ -295,10 +295,10 @@ val pop_env_def = Define `
   pop_env ^s =
     case s.stack of
     | (StackFrame m e0 e NONE::xs) =>
-         SOME (s with <| locals := union (fromAList e0) (fromAList e) ; stack := xs ; locals_size := m
+         SOME (s with <| locals := union (fromAList e) (fromAList e0); stack := xs ; locals_size := m
                        |>)
     | (StackFrame m e0 e (SOME (n,_,_))::xs) =>
-         SOME (s with <| locals := union (fromAList e0) (fromAList e) ; stack := xs ; locals_size := m ; handler := n |>)
+         SOME (s with <| locals := union (fromAList e) (fromAList e0); stack := xs ; locals_size := m ; handler := n |>)
     | _ => NONE`;
 
 val push_env_clock = Q.prove(
@@ -319,7 +319,7 @@ val jump_exc_def = Define `
       case LASTN (s.handler+1) s.stack of
       | StackFrame m e0 e (SOME (n,l1,l2)) :: xs =>
           SOME (s with <| handler := n ;
-                          locals := union (fromAList e0) (fromAList e) ;
+                          locals := union (fromAList e) (fromAList e0);
                           stack := xs;
                           locals_size := m |>,l1,l2)
       | _ => NONE
@@ -341,7 +341,7 @@ End
 Definition cut_env_def:
   cut_env (name_sets:cutsets) env =
     case cut_envs name_sets env of
-    | SOME (e1, e2) => SOME (union e1 e2)
+    | SOME (e1, e2) => SOME (union e2 e1)
     | _ => NONE
 End
 
