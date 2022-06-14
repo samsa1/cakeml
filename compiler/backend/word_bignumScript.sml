@@ -467,7 +467,7 @@ val div_location_def = Define `
 val DivCode_def = Define `
   DivCode l1 l2 n1 n2 n3 n4 n5 =
     MustTerminate
-      (Seq (Call (SOME (n1,LS (),Skip,l1,l2)) (SOME div_location) [n3;n4;n5] NONE)
+      (Seq (Call (SOME ([n1],(LS (),LN),Skip,l1,l2)) (SOME div_location) [n3;n4;n5] NONE)
            (Assign n2 (Lookup (Temp 28w))))`
 
 val LoadRegs_def = Define `
@@ -483,15 +483,15 @@ val compile_def = Define `
   (compile n l i cs Continue = (Call NONE (SOME n) [0] NONE,l,i,cs)) /\
   (compile n l i cs (Rec save_regs names) =
      (LoadRegs save_regs
-       (Call (SOME (1,list_insert (0::MAP (\n.n+2) save_regs) LN,
+       (Call (SOME ([1],(LS (),list_insert (MAP (\n.n+2) save_regs) LN),
           SaveRegs save_regs,n,l)) (SOME n) [] NONE),l+1,i,cs)) /\
   (compile n l i cs (Loop rec_calls vs body) =
      case has_compiled body cs of
      | INL existing_index =>
-         (Call (SOME (i,LS (),Skip,n,l)) (SOME existing_index) [] NONE,l+1,i+1,cs)
+         (Call (SOME ([i],(LS (),LN),Skip,n,l)) (SOME existing_index) [] NONE,l+1,i+1,cs)
      | INR new_index =>
          let (new_code,a,b,cs) = compile new_index 2 1 (code_acc_next cs) body in
-           (Call (SOME (i,LS (),Skip,n,l)) (SOME new_index) [] NONE,l+1,i+1,
+           (Call (SOME ([i],(LS (),LN),Skip,n,l)) (SOME new_index) [] NONE,l+1,i+1,
             install (body,new_index,new_code) cs)) /\
   (compile n l i cs (LoopBody b) = compile n l i cs b) /\
   (compile n l i cs (Seq p1 p2) =
@@ -547,7 +547,7 @@ val _ = (max_print_depth := 25);
 val generated_bignum_stubs_def = Define `
   generated_bignum_stubs n =
     let (x1,_,_,(_,cs)) = compile n 2 1 (n+1,[]) mc_iop_code in
-      (n,1n,Seq x1 (Return 0 0)) :: MAP (\(x,y,z). (y,1,Seq z (Return 0 0))) cs`
+      (n,1n,Seq x1 (Return 0 [0])) :: MAP (\(x,y,z). (y,1,Seq z (Return 0 [0]))) cs`
 
 val generated_bignum_stubs_eq = save_thm("generated_bignum_stubs_eq",
   EVAL ``generated_bignum_stubs n`` |> SIMP_RULE std_ss [GSYM ADD_ASSOC]);
