@@ -638,7 +638,7 @@ val locals_rm = Q.prove(`
     with possibly more locals used
 *)
 Theorem inst_select_thm:
-    ∀c temp prog st res rst loc.
+  ∀c temp prog st res rst loc.
   evaluate (prog,st) = (res,rst) ∧
   every_var (λx. x < temp) prog ∧
   res ≠ SOME Error ∧
@@ -847,13 +847,13 @@ Proof
       Cases_on`evaluate(q',st'')`>>
       Cases_on`q''`>>full_simp_tac(srw_ss())[]>>
       Cases_on`x''`>>full_simp_tac(srw_ss())[]
-      >-
-        (IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
+      >- (
+        IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
         FULL_CASE_TAC>>full_simp_tac(srw_ss())[]>>
         IF_CASES_TAC>>full_simp_tac(srw_ss())[]>>
         ntac 2 (FULL_CASE_TAC>>full_simp_tac(srw_ss())[])>>srw_tac[][]>>
         res_tac>>full_simp_tac(srw_ss())[]>>
-        qpat_abbrev_tac`D = set_var A B C`>>
+        qpat_abbrev_tac`D = set_vars A B C`>>
         first_x_assum(qspec_then`D.locals` assume_tac)>>full_simp_tac(srw_ss())[locals_rel_def]>>
         full_simp_tac(srw_ss())[locals_rm,state_component_equality])
       >-
@@ -868,7 +868,7 @@ Proof
         full_simp_tac(srw_ss())[locals_rm,state_component_equality]>>
         Cases_on`res`>>full_simp_tac(srw_ss())[]>>
         qexists_tac`loc''`>>metis_tac[])
-      >>
+      >> (* 3 cases *)
         full_simp_tac(srw_ss())[state_component_equality]
 QED
 
@@ -919,10 +919,10 @@ QED
 (*Semantics preservation*)
 Theorem three_to_two_reg_correct:
   ∀prog s res s'.
-    every_inst distinct_tar_reg prog ∧
-    evaluate (prog,s) = (res,s') ∧ res ≠ SOME Error
-    ⇒
-    evaluate(three_to_two_reg prog,s) = (res,s')
+  every_inst distinct_tar_reg prog ∧
+  evaluate (prog,s) = (res,s') ∧ res ≠ SOME Error
+  ⇒
+  evaluate(three_to_two_reg prog,s) = (res,s')
 Proof
   ho_match_mp_tac three_to_two_reg_ind>>
   srw_tac[][]>>full_simp_tac(srw_ss())[three_to_two_reg_def,evaluate_def,state_component_equality]>>
