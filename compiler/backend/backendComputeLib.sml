@@ -633,6 +633,7 @@ val add_backend_compset = computeLib.extend_compset
     ,word_simpTheory.const_fp_loop_def
     ,word_simpTheory.const_fp_def
     ,word_simpTheory.compile_exp_def
+    ,word_simpTheory.all_names_def
       (* ---- wordLang remove must terminate ---- *)
     ,word_removeTheory.remove_must_terminate_def
       (* ---- wordLang inst_select and inst flattening ---- *)
