@@ -645,7 +645,7 @@ val stack_asm_ok_def = Define`
   (stack_asm_ok c (If cmp n r p p') ⇔ stack_asm_ok c p ∧ stack_asm_ok c p') ∧
   (stack_asm_ok c (While cmp n r p) ⇔ stack_asm_ok c p) ∧
   (stack_asm_ok c (Raise n) ⇔ n < c.reg_count ∧ ¬MEM n c.avoid_regs) ∧
-  (stack_asm_ok c (Return n _) ⇔ n < c.reg_count ∧ ¬MEM n c.avoid_regs) ∧
+  (stack_asm_ok c (Return n) ⇔ n < c.reg_count ∧ ¬MEM n c.avoid_regs) ∧
   (stack_asm_ok c (Call r tar h) ⇔
     (case tar of INR r => r < c.reg_count ∧ ¬MEM r c.avoid_regs | _ => T) ∧
     case r of
@@ -759,7 +759,7 @@ val stack_asm_name_def = Define`
   (stack_asm_name c (If cmp n r p p') ⇔ stack_asm_name c p ∧ stack_asm_name c p') ∧
   (stack_asm_name c (While cmp n r p) ⇔ stack_asm_name c p) ∧
   (stack_asm_name c (Raise n) ⇔ reg_name n c) ∧
-  (stack_asm_name c (Return n _) ⇔ reg_name n c) ∧
+  (stack_asm_name c (Return n) ⇔ reg_name n c) ∧
   (stack_asm_name c (Call r tar h) ⇔
     (case tar of INR r => reg_name r c | _ => T) ∧
     case r of
@@ -868,8 +868,8 @@ val reg_bound_def = Define `
      v1 < k /\ n <> BitmapBase) /\
   (reg_bound (LocValue v1 l1 l2) k <=>
      v1 < k) /\
-  (reg_bound (Return v1 v2) k <=>
-     v1 < k /\ v2 < k) /\
+  (reg_bound (Return v1) k <=>
+     v1 < k) /\
   (reg_bound (JumpLower v1 v2 dest) k <=>
      v1 < k /\ v2 < k) /\
   (reg_bound ((Seq p1 p2):'a stackLang$prog) k <=>

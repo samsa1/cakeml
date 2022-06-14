@@ -302,7 +302,7 @@ This is the language where register allocation is performed.
 ML functions for dealing with the syntax of wordLang programs.
 
 [word_allocScript.sml](word_allocScript.sml):
-This is the compiler's regsiter allocator. It supports different modes:
+This is the compiler's register allocator. It supports different modes:
     0) simple allocator, no spill heuristics;
     1) simple allocator + spill heuristics;
     2) IRC allocator, no spill heuristics (default);

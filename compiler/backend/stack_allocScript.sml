@@ -608,7 +608,7 @@ val word_gc_code_def = Define `
                  :'a stackLang$prog`
 
 val stubs_def = Define `
-  stubs conf = [(gc_stub_location,Seq (word_gc_code conf) (Return 0 0))]`
+  stubs conf = [(gc_stub_location,Seq (word_gc_code conf) (Return 0))]`
 
 val stub_names_def = Define`
   stub_names () = [(gc_stub_location,«_Gc»)]`

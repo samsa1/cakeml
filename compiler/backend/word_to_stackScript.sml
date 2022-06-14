@@ -250,7 +250,7 @@ val comp_def = Define `
   (comp (Inst i) bs kf = (wInst i kf,bs)) /\
   (comp (Return v1 v2) bs kf =
      let (xs,x) = wReg1 v1 kf in
-       (wStackLoad xs (SeqStackFree (FST (SND kf)) (Return x 1)),bs)) /\
+       (wStackLoad xs (SeqStackFree (FST (SND kf)) (Return x)),bs)) /\
   (comp (Raise v) bs kf = (Call NONE (INL raise_stub_location) NONE,bs)) /\
   (comp (OpCurrHeap b dst src) bs kf =
      let (xs,src_r) = wReg1 src kf in

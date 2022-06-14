@@ -38,7 +38,7 @@ val _ = Datatype `
        | JumpLower num num num (* reg, reg, target name *)
        | Alloc num
        | Raise num
-       | Return num num
+       | Return num
        | FFI string num num num num num (* FFI index, conf_ptr, conf_len,
                                            array_ptr, array_len, ret_addr *)
        | Tick
