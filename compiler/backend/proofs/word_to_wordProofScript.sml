@@ -31,7 +31,7 @@ QED
 
 (*Chains up compile_single theorems*)
 Theorem compile_single_lem:
-    ∀prog n st.
+  ∀prog n st.
   domain st.locals = set(even_list n) ∧
   gc_fun_const_ok st.gc_fun
   ⇒
@@ -248,8 +248,7 @@ Proof
       metis_tac[]))>>
     rw[]>>
     rfs[]
-    >- (*Tail calls*)
-      (
+    >- ( (*Tail calls*)
       ntac 2 (IF_CASES_TAC>>full_simp_tac(srw_ss())[])
       >- simp[call_env_def,flush_state_def,state_component_equality]>>
       qabbrev_tac`stt = call_env q r' (dec_clock st)`>>
@@ -315,16 +314,16 @@ Proof
     rw[]>>
     Q.ISPECL_THEN [`n`,`q'`,`LENGTH q`,`stt with permute:=perm'`] mp_tac
       (Q.GEN `name` compile_single_lem)>>
-    impl_tac>-
-      (full_simp_tac(srw_ss())[Abbr`stt`,call_env_def,flush_state_def]>>
+    impl_tac>- (
+      full_simp_tac(srw_ss())[Abbr`stt`,call_env_def,flush_state_def]>>
       simp[domain_fromList2,word_allocTheory.even_list_def,push_env_gc_fun,dec_clock_def])>>
     qpat_abbrev_tac`A = compile_single t k a c B`>>
     PairCases_on`A`>>srw_tac[][]>>full_simp_tac(srw_ss())[LET_THM]>>
     pop_assum mp_tac >>
     pairarg_tac>>full_simp_tac(srw_ss())[Abbr`stt`] >>
     strip_tac
-    >-
-      (qexists_tac`λn. if n = 0:num then st.permute 0 else perm'' (n-1)`>>
+    >- (
+      qexists_tac`λn. if n = 0:num then st.permute 0 else perm'' (n-1)`>>
       Cases_on`o0`>>TRY(PairCases_on`x''`)>>
       full_simp_tac(srw_ss())[push_env_def,env_to_list_def,LET_THM,dec_clock_def,call_env_def,flush_state_def,ETA_AX])>>
     Cases_on`res`>>full_simp_tac(srw_ss())[]
@@ -335,7 +334,7 @@ Proof
     Cases_on`x''`>>full_simp_tac(srw_ss())[]
     >-
       (*Manual simulation for Result*)
-      (Cases_on`w ≠ Loc xl1 xl2`>>full_simp_tac(srw_ss())[]
+      (Cases_on`w = Loc xl1 xl2 ⇒ LENGTH l'' ≠ LENGTH xn`>>full_simp_tac(srw_ss())[]
       >-
         (qexists_tac`λn. if n = 0:num then st.permute 0 else perm'' (n-1)`>>
         Cases_on`o0`>>TRY(PairCases_on`x''`)>>
@@ -347,7 +346,7 @@ Proof
         Cases_on`o0`>>TRY(PairCases_on`x''`)>>
         full_simp_tac(srw_ss())[push_env_def,env_to_list_def,LET_THM,dec_clock_def,call_env_def,flush_state_def,ETA_AX])
       >>
-      reverse (Cases_on`domain x''.locals = domain x'`)>>full_simp_tac(srw_ss())[]
+      reverse (Cases_on`domain x''.locals = domain (FST x') ∪ domain (SND x')`)>>full_simp_tac(srw_ss())[]
       >-
         (qexists_tac`λn. if n = 0:num then st.permute 0 else perm'' (n-1)`>>
         Cases_on`o0`>>TRY(PairCases_on`x'''`)>>
@@ -360,9 +359,9 @@ Proof
       qpat_x_assum`(λ(x,y). _) _`mp_tac >>
       pairarg_tac>>full_simp_tac(srw_ss())[]>>
       strip_tac >>
-      last_x_assum(qspecl_then[`(set_var xn w0 x'') with permute:=rcst.permute`,`xrh`,`rst1.code`,`cc`]mp_tac)>>
+      last_x_assum(qspecl_then[`(set_vars xn l'' x'') with permute:=rcst.permute`,`xrh`,`rst1.code`,`cc`]mp_tac)>>
       impl_tac>-
-        (simp[set_var_def]>>
+        (simp[set_vars_def]>>
         (*Monotonicity on 12, and dec_clock*)
         `rst.clock < st.clock` by
           (imp_res_tac evaluate_clock>>
@@ -372,14 +371,14 @@ Proof
         EVERY_CASE_TAC>>srw_tac[][state_component_equality]>>
         simp[])>>
       impl_tac>-
-        (simp[set_var_def]>>
+        (simp[set_vars_def]>>
         imp_res_tac evaluate_clock>>full_simp_tac(srw_ss())[]>>
         imp_res_tac evaluate_clock>>
         Cases_on`o0`>>TRY(PairCases_on`x'''`)>>full_simp_tac(srw_ss())[call_env_def,flush_state_def,push_env_def,LET_THM,dec_clock_def,env_to_list_def]>>
         imp_res_tac pop_env_termdep>>
         full_simp_tac(srw_ss())[])>>
       impl_tac>-
-        (simp[set_var_def]>>
+        (simp[set_vars_def]>>
         imp_res_tac pop_env_code_gc_fun_clock>>fs[]>>
         imp_res_tac evaluate_consts>>fs[dec_clock_def]>>
         fs[word_state_eq_rel_def]>>
@@ -404,10 +403,9 @@ Proof
         EVERY_CASE_TAC>>fs[state_component_equality])>>
       simp[]>>
       rw[]>>
-      pairarg_tac>>fs[set_var_def]))
-    >-
-      (*Manual simulation for Exceptions*)
-      (Cases_on`o0`>>full_simp_tac(srw_ss())[]
+      pairarg_tac>>fs[set_vars_def]))
+    >- ( (*Manual simulation for Exceptions*)
+      Cases_on`o0`>>full_simp_tac(srw_ss())[]
       >-
         (pop_assum mp_tac >> pairarg_tac>>full_simp_tac(srw_ss())[]>>
         strip_tac >>
@@ -430,11 +428,10 @@ Proof
       >-
         (qexists_tac`λn. if n = 0:num then st.permute 0 else perm'' (n-1)`>>
         full_simp_tac(srw_ss())[push_env_def,env_to_list_def,LET_THM,dec_clock_def,call_env_def,flush_state_def,ETA_AX])>>
-      Cases_on`domain rst.locals ≠ domain x'`
+      Cases_on`domain rst.locals ≠  domain (FST x') ∪ domain (SND x')`
       >-
         (qexists_tac`λn. if n = 0:num then st.permute 0 else perm'' (n-1)`>>
-        full_simp_tac(srw_ss())[push_env_def,env_to_list_def,LET_THM,dec_clock_def,call_env_def,flush_state_def,ETA_AX])
-      >>
+        full_simp_tac(srw_ss())[push_env_def,env_to_list_def,LET_THM,dec_clock_def,call_env_def,flush_state_def,ETA_AX]) >>
       qpat_x_assum`((λ(res',rcst). P) A)` mp_tac>>
       pairarg_tac>>full_simp_tac(srw_ss())[]>>strip_tac>>
       last_x_assum kall_tac>>
@@ -461,7 +458,7 @@ Proof
       rfs[]>>
       qexists_tac`λn. if n = 0:num then st.permute 0 else perm'''' (n-1)`>>
       fs[call_env_def,flush_state_def,push_env_def,dec_clock_def,env_to_list_def,ETA_AX,pop_env_perm,set_var_perm]>>
-      `domain rst1.locals = domain x'` by
+      `domain rst1.locals =  domain (FST x') ∪ domain (SND x')` by
         (qpat_x_assum`rst1=_` SUBST_ALL_TAC>>rw[])>>
       simp[]>>
       pairarg_tac>>fs[]>>
