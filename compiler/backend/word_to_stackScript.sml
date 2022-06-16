@@ -281,7 +281,7 @@ val comp_def = Define `
      | NONE => (Seq q0 (SeqStackFree (stack_free dest (LENGTH args) kf)
                  (Call NONE dest NONE)),bs)
      | SOME (ret_var, live, ret_code, l1, l2) =>
-         let (q1,bs) = wLive live bs kf in
+         let (q1,bs) = wLive (SND live) bs kf in
          let (q2,bs) = comp ret_code bs kf in
            case handler of
            | NONE => (Seq q0
@@ -298,7 +298,7 @@ val comp_def = Define `
                      (Call (SOME (PopHandler kf q2,0,l1,l2)) dest (SOME (q3,h1,h2)))))),
                  bs)) /\
   (comp (Alloc r live) bs kf =
-     let (q1,bs) = wLive live bs kf in
+     let (q1,bs) = wLive (SND live) bs kf in
        (Seq q1 (Alloc 1),bs)) /\
   (comp (LocValue r l1) bs kf = (wRegWrite1 (λr. LocValue r l1 0) r kf,bs)) /\
   (comp (Install r1 r2 r3 r4 live) bs kf =

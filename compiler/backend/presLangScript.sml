@@ -474,9 +474,14 @@ val clos_to_display_def = tDefine "clos_to_display" `
 
 (* dataLang *)
 
-val num_set_to_display_def = Define
-  `num_set_to_display ns = List (MAP num_to_display
-    (MAP FST (sptree$toAList ns)))`;
+Definition num_set_to_display_def:
+  num_set_to_display ns = List (MAP num_to_display
+    (MAP FST (sptree$toAList ns)))
+End
+
+Definition num_sets_to_display_def:
+  num_sets_to_display ns = Tuple [num_set_to_display (FST ns); num_set_to_display (SND ns)]
+End
 
 val data_prog_to_display_def  = Define `
   data_prog_to_display prog = case prog of
@@ -664,7 +669,7 @@ val stack_prog_to_display_def = Define`
     | JumpLower n1 n2 n3 => item_with_nums «JumpLower» [n1; n2; n3]
     | Alloc n => item_with_num «Alloc» n
     | Raise n => item_with_num «Raise» n
-    | Return n1 n2 => item_with_nums «Return» [n1; n2]
+    | Return n => item_with_nums «Return» [n]
     | FFI nm cp cl ap al ra => Item NONE «FFI»
         (string_imp nm :: MAP num_to_display [cp; cl; ap; al; ra])
     | Tick => empty_item «Tick»
@@ -750,7 +755,7 @@ val word_exp_to_display_def = tDefine "word_exp_to_display" `
   \\ rw []
  );
 
-val word_prog_to_display_def = tDefine "word_prog_to_display" `
+Definition word_prog_to_display_def:
   (word_prog_to_display Skip = empty_item (strlit "Skip")) /\
   (word_prog_to_display (Move n mvs) = Item NONE (strlit "Move")
     [num_to_display n; displayLang$List (MAP (\(n1, n2). Tuple
@@ -777,38 +782,38 @@ val word_prog_to_display_def = tDefine "word_prog_to_display" `
   (word_prog_to_display (If cmp n reg p1 p2) = Item NONE (strlit "If")
     [word_prog_to_display p1; word_prog_to_display p2]) /\
   (word_prog_to_display (Alloc n ns) = Item NONE (strlit "Alloc")
-    [num_to_display n; num_set_to_display ns]) /\
+    [num_to_display n; num_sets_to_display ns]) /\
   (word_prog_to_display (Raise n) = item_with_num (strlit "Raise") n) /\
-  (word_prog_to_display (Return n1 n2) = item_with_nums (strlit "Return") [n1; n2]) /\
+  (word_prog_to_display (Return n1 ns) = item_with_nums (strlit "Return") (n1::ns)) /\
   (word_prog_to_display Tick = empty_item (strlit "Tick")) /\
   (word_prog_to_display (LocValue n1 n2) =
     item_with_nums (strlit "LocValue") [n1; n2]) /\
   (word_prog_to_display (Install n1 n2 n3 n4 ns) =
     Item NONE (strlit "Install") (MAP num_to_display [n1; n2; n3; n4]
-        ++ [num_set_to_display ns])) /\
+        ++ [num_sets_to_display ns])) /\
   (word_prog_to_display (CodeBufferWrite n1 n2) =
     item_with_nums (strlit "CodeBufferWrite") [n1; n2]) /\
   (word_prog_to_display (DataBufferWrite n1 n2) =
     item_with_nums (strlit "DataBufferWrite") [n1; n2]) /\
   (word_prog_to_display (FFI nm n1 n2 n3 n4 ns) =
     Item NONE (strlit "FFI") (string_imp nm :: MAP num_to_display [n1; n2; n3; n4]
-        ++ [num_set_to_display ns])) /\
+        ++ [num_sets_to_display ns])) /\
   (word_prog_to_display_ret NONE = empty_item (strlit "NONE")) /\
   (word_prog_to_display_ret (SOME (n1, ns, prog, n2, n3)) =
-    Item NONE (strlit "SOME") [Tuple [num_to_display n1; num_set_to_display ns;
+    Item NONE (strlit "SOME") [Tuple [List (MAP num_to_display n1); num_sets_to_display ns;
         word_prog_to_display prog; num_to_display n2; num_to_display n3]]) /\
   (word_prog_to_display_handler NONE = empty_item (strlit "NONE")) /\
   (word_prog_to_display_handler (SOME (n1, prog, n2, n3)) =
     Item NONE (strlit "SOME") [Tuple [num_to_display n1;
         word_prog_to_display prog; num_to_display n2; num_to_display n3]])
-`
+Termination
   (WF_REL_TAC `measure (\x. case x of
         | INL p => wordLang$prog_size ARB p
         | INR (INL v) => wordLang$prog1_size ARB v
-        | INR (INR v) => wordLang$prog3_size ARB v)`
+        | INR (INR v) => wordLang$prog4_size ARB v)`
     \\ rw []
   )
-;
+End
 
 val word_progs_to_display_def = Define`
   word_progs_to_display (ps,names) = list_to_display
