@@ -76,9 +76,9 @@ Proof
 QED
 
 Theorem no_install_evaluate_const_code:
-     ∀ prog s result s1 . evaluate (prog, s) = (result, s1) ∧
-        no_install prog ∧ no_install_code s.code
-    ⇒ s.code = s1.code
+   ∀ prog s result s1 . evaluate (prog, s) = (result, s1) ∧
+      no_install prog ∧ no_install_code s.code
+  ⇒ s.code = s1.code
 Proof
     recInduct evaluate_ind >> rw[] >> qpat_x_assum `evaluate _ = _` mp_tac >>
     fs[evaluate_def]
@@ -107,8 +107,9 @@ Proof
     >- (EVERY_CASE_TAC >> rw[] >> fs[] >> fs[ffiTheory.call_FFI_def] >>
         EVERY_CASE_TAC >> rw[] >> fs[state_component_equality])
     >- (fs[no_install_def, dec_clock_def, call_env_def, flush_state_def, push_env_def,
-        cut_env_def, pop_env_def, set_var_def] >>
-        EVERY_CASE_TAC >> rw[] >> fs[] >> metis_tac[no_install_find_code])
+        cut_env_def, pop_env_def, set_var_def, set_vars_def] >>
+        EVERY_CASE_TAC >> rw[] >>
+        gs[]>>metis_tac[no_install_find_code])
 QED
 
 
@@ -121,6 +122,7 @@ val dest_word_loc_def = Define `
     (dest_word_loc (_:'a word_loc) = NONE)
 `
 
+(* TODO: extract only the locs in Result? *)
 val dest_result_loc_def = Define `
     (dest_result_loc (SOME (Result w (Loc n n0))) = {n}) ∧
     (dest_result_loc (SOME (Exception w (Loc n n0))) = {n}) ∧
